@@ -76,3 +76,35 @@ Network bandwidth analysis
 Application performance monitoring
 Infrastructure health tracking
 Capacity planning
+
+packet-analyzer/
+├── docker-compose.yml
+├── packet-capture/
+│   ├── Dockerfile
+│   ├── src/
+│   │   ├── main.rs
+│   │   ├── packet_capture.rs
+│   │   ├── protocol_parser.rs
+│   │   ├── deep_inspection.rs
+│   │   └── performance_metrics.rs
+│   └── Cargo.toml
+├── analysis-engine/
+│   ├── src/
+│   │   ├── main.rs
+│   │   ├── anomaly_detector.rs
+│   │   ├── threat_detector.rs
+│   │   ├── traffic_analyzer.rs
+│   │   └── alert_manager.rs
+│   └── Cargo.toml
+├── ml-models/
+│   ├── anomaly_detection.py
+│   ├── threat_classification.py
+│   ├── performance_predictor.py
+│   └── model_server.py
+├── wireshark-integration/
+│   ├── capture_filters.lua
+│   └── custom_dissectors.lua
+└── configs/
+    ├── capture.conf
+    ├── detection_rules.yaml
+    └── thresholds.json
