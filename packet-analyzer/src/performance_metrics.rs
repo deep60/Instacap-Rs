@@ -62,7 +62,7 @@ impl PerformanceTracker {
     pub fn new(buffer_size: usize, sampling_interval: Duration) -> Self {
         Self {
             packet_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(buffer_size))),
-            metrics_history: Arc::new(RwLock::new(VecDeque::with_capacity(1000))),
+            metrics_history: Arc::new(RwLock::new(VecDeque::with_capacity(1000))), // RwLock allows multiple readers or one writer 
             connection_tracker: Arc::new(Mutex::new(HashMap::new())),
             start_time: Instant::now(),
             buffer_size,
@@ -74,6 +74,9 @@ impl PerformanceTracker {
     // Additional methods for tracking packets, calculating metrics, etc. would go here.
     pub fn record_packet(&self, packet: PacketMetrics) {
         let mut buffer = self.packet_buffer.lock().unwrap();
+
+        // implement circular buffer: removes oldest packet when buffer is full
+        //Maintain a fixed meomry usage regardless of runtime
         if buffer.len() >= self.buffer_size {
             buffer.pop_front();
         }
@@ -113,7 +116,7 @@ impl PerformanceTracker {
         *last_calc = now;
         drop(last_calc);
 
-        let buffer = self.packet_buffer.lock().unwrap();
+        let buffer = self.packet_buffer.lock().unwrap();  // Get a snapshot of current data
         let connections = self.connection_tracker.lock().unwrap();
 
         if buffer.is_empty() {
@@ -164,18 +167,20 @@ impl PerformanceTracker {
         Some(metrics)
     }
 
+    // Extract RTT values from packets that have them 
     fn calculate_latency_and_jitter(&self, packets: &[PacketMetrics]) -> (f64, f64) {
         let rtts: Vec<f64> = packets.iter()
-            .filter_map(|p| p.rtt.map(|rtt| rtt.as_secs_f64() * 1000.0)) // Convert to milliseconds
+            .filter_map(|p| p.rtt.map(|rtt| rtt.as_secs_f64() * 1000.0)) // Convert seconds to milliseconds
             .collect();
 
         if rtts.is_empty() {
             return (0.0, 0.0);
         }
 
-        let avg_latency = rtts.iter().sum::<f64>() / rtts.len() as f64;
+        let avg_latency = rtts.iter().sum::<f64>() / rtts.len() as f64;   // calculate average latency across all packet with RTT data
 
         // Calculate jitter (average deviation from mean)
+        // uage sample variance formula (n-1 denominator)
         let jitter = if rtts.len > 1 {
             let variance: f64 = rtts.iter()
                 .map(|rtt| (rtt - avg_latency).powi(2))
@@ -193,7 +198,7 @@ impl PerformanceTracker {
             return 0.0; // No packets to calculate throughput
         }
 
-        let total_bytes: usize = packets.iter().map(|p| p.size as u64).sum();
+        let total_bytes: usize = packets.iter().map(|p| p.size);
         let time_window = packets
             .last()
             .unwrap()
@@ -201,7 +206,7 @@ impl PerformanceTracker {
             .duration_since(packets.first().unwrap().timestamp)
             .as_secs_f64();
 
-        if time_window == 0.0 {
+        if time_window > 0.0 {
             (total_bytes as f64 * 8.0) / (time_window * 1_000_000.0) // Convert to Mbps
         } else {
             0.0
@@ -246,6 +251,8 @@ impl PerformanceTracker {
         (throughput / LINK_SPEED_BPS) * 100.0 // Convert to percentage
     }
 
+    // Calculate error and retransmission rates as percentages
+    // Provides separate tracking for different types of network issues
     fn calculate_error_rates(&self, connections: &HashMap<String, ConnectionMetrics>) -> (f64, f64) {
         let total_packets: u32 = connections.values().map(|c| c.packet_sent).sum();
         let total_retrans: u32 = connections.values().map(|c| c.retransmissions).sum();
