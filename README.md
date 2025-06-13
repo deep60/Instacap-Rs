@@ -77,7 +77,10 @@ Application performance monitoring
 Infrastructure health tracking
 Capacity planning
 
-packet-analyzer/
+## Project Directory Structure
+
+```plaintext
+Instacap-RS/
 ├── docker-compose.yml
 ├── packet-capture/
 │   ├── Dockerfile
