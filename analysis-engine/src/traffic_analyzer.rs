@@ -41,7 +41,7 @@ pub struct FlowStats {
 pub struct TrafficMetrics {
     pub total_packets: u64,
     pub total_bytes: u64,
-    pub packet_per_second: f64,
+    pub packets_per_second: f64,
     pub bytes_per_second: f64,
     pub protocol_distribution: HashMap<String, u64>,
     pub top_talkers: Vec<(IpAddr, u64)>, // (IP address, total bytes)
