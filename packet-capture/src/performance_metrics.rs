@@ -385,8 +385,8 @@ impl Default for PerformanceSummary {
             max_throughput: 0.0,
             avg_packet_loss: 0.0,
             max_packet_loss: 0.0,
-            uptime_seconds: 0,
-            total_connections: 0,
+            uptime_seconds: 0.0,
+            total_connections: 0.0,
         }
     }
 }
