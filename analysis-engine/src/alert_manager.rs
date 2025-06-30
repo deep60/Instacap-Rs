@@ -109,10 +109,18 @@ pub struct AlertCondition {
     pub value: String,
     pub threshold: Option<f64>,
 }
-
+let mut receiver_gaurd = receiver.lock().unwrap();
+if let Ok(alert) = receiver_gaurd.try_recv() {
+    // ...
+    drop(receiver_gaurd);
+    // ...
+} else {
+    drop(receiver_gaurd);
+    // ...
+}
 pub struct AlertManager {
     alerts: Arc<Mutex<VecDeque<Alert>>>,
-    rule: Arc<Mutex<VecDeque<AlertRule>>>,
+    rules: Arc<Mutex<Vec<AlertRule>>>,
     alert_sender: mpsc::UnboundedSender<Alert>,
     alert_receiver: Arc<Mutex<mpsc::UnboundedReceiver<Alert>>>,
     max_alerts: usize,
@@ -120,7 +128,7 @@ pub struct AlertManager {
     notification_handlers: Vec<Box<dyn NotificationHandler + Send + Sync>>
 }
 
-pub fn NotificationHandler {
+pub trait NotificationHandler {
     fn handle_alert(&self, alert: &Alert) -> Result<(), Box<dyn std::error::Error>>;
 }
 
@@ -136,7 +144,7 @@ impl NotificationHandler for ConsoleNotificationHandler {
         );
 
         if let(Some(src), Some(dst)) = (&alert.source_ip, &alert.destination_ip) {
-            println(" Network: {} -> {} ({}:{})", 
+            println!(" Network: {} -> {} ({}:{})", 
                 src, dst, 
                 alert.protocol.as_deref().unwrap_or("unknown"), 
                 alert.port.unwrap_or(0)
@@ -144,7 +152,7 @@ impl NotificationHandler for ConsoleNotificationHandler {
         } 
 
         if !alert.metadata.is_empty() {
-            println(" Metadata: {:?}", alert.metadata);
+            println!(" Metadata: {:?}", alert.metadata);
         }
 
         Ok(())
@@ -168,7 +176,7 @@ impl EmailNotificationHandler {
 impl NotificationHandler for EmailNotificationHandler {
     fn handle_alert(&self, alert: &Alert) -> Result<(), Box<dyn std::error::Error>> {
         // Simulate email sending (in production, use actual SMTP library)
-        println(
+        println!(
             "EMAIL NOTIFICATION to {:?} via {}: [{:?}] {}",
             self.recipients,
             self.smtp_server,
@@ -194,7 +202,7 @@ impl AlertManager {
         }
     }
 
-    pub add_notification_handler(&mut self, handler: Box<dyn NotificationHandler + Send + Sync>) {
+    pub fn add_notification_handler(&mut self, handler: Box<dyn NotificationHandler + Send + Sync>) {
         self.notification_handlers.push(handler)
     }
 
@@ -250,12 +258,12 @@ impl AlertManager {
         false
     }
 
-    pub get_alerts(&self) -> Vec<Alert> {
+    pub fn get_alerts(&self) -> Vec<Alert> {
         let alerts = self.alerts.lock().unwrap();
         alerts.iter().cloned().collect()
     }
 
-    pub fn get_alets_by_severity(&self, severity: AlertSeverity) -> Vec<Alert> {
+    pub fn get_alerts_by_severity(&self, severity: AlertSeverity) -> Vec<Alert> {
         let alerts = self.alerts.lock().unwrap();
         alerts
             .iter()
@@ -290,7 +298,7 @@ impl AlertManager {
         let mut stats = HashMap::new();
 
         stats.insert("total_alerts".to_string(), alerts.len() as u64);
-        stats.insert("acknowledged_alerts".to_string(), alerts.iter().filter(|a| a.acknowledged));
+        stats.insert("acknowledged_alerts".to_string(), alerts.iter().filter(|a| a.acknowledged).count() as u64);
         stats.insert("resolved_alerts".to_string(), alerts.iter().filter(|a| a.resolved).count() as u64);
         stats.insert("critical_alerts".to_string(), alerts.iter().filter(|a| a.severity == AlertSeverity::Critical).count() as u64);
         stats.insert("high_alerts".to_string(), alerts.iter().filter(|a| a.severity == AlertSeverity::High).count() as u64);
@@ -315,7 +323,7 @@ impl AlertManager {
                     .unwrap()
                     .as_secs();
 
-                let mut alerts_gaurd = alerts.lock().unwrap();
+                let mut alerts_guard = alerts.lock().unwrap();
                 let retention_threshold = current_time - retention.as_secs();
 
                 // Remove old alerts
@@ -345,7 +353,7 @@ impl AlertManager {
     }
 
     // Convenience methods for creating common alerts
-    pub fn create_anomaly_alerts(&self, description: String, severity: AlertSeverity) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn create_anomaly_alert(&self, description: String, severity: AlertSeverity) -> Result<(), Box<dyn std::error::Error>> {
         let alert = Alert::new(
             AlertType::AnomalyDetected,
             severity,
