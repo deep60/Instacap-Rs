@@ -1,6 +1,84 @@
+
 [package]
 name = "analysis-engine"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Core async runtime
+tokio = { version = "1.0", features = ["full"] }
+tokio-util = "0.7"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Network and protocol handling
+pnet = "0.34"
+etherparse = "0.14"
+
+# Data structures and algorithms
+hashbrown = "0.14"
+smallvec = "1.11"
+rayon = "1.7"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# Statistics and math
+statrs = "0.16"
+ndarray = "0.15"
+
+# Database/storage
+rusqlite = { version = "0.29", features = ["bundled"] }
+redis = { version = "0.23", features = ["tokio-comp"] }
+
+# Configuration
+config = "0.13"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Metrics and monitoring
+prometheus = "0.13"
+metrics = "0.21"
+
+# Pattern matching for threat detection
+regex = "1.9"
+aho-corasick = "1.0"
+
+# IP address handling
+ipnet = "2.8"
+
+# HTTP client for API calls
+reqwest = { version = "0.11", features = ["json"] }
+
+# Message passing
+crossbeam-channel = "0.5"
+
+# Bloom filters for efficient lookups
+bloom = "0.3"
+
+# Machine learning integration
+candle-core = "0.3"
+candle-nn = "0.3"
+
+[dev-dependencies]
+criterion = "0.5"
+tokio-test = "0.4"
+
+[[bin]]
+name = "analysis-engine"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
