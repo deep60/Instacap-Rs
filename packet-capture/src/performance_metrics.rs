@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, RwLock};
@@ -53,7 +53,7 @@ pub struct ConnectionMetrics {
 
 #[derive(Debug)]
 pub struct LatencyMeasurement {
-    request_line: Instant,,
+    request_line: Instant,
     response_time: Option<Instant>,
     connection_id: String,
 }
