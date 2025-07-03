@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use log::{info, warn, error};
+use log::info;
 
 /// Command line arguments for Instacap-Rs
 #[derive(Parser, Debug)]
