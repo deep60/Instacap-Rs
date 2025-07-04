@@ -281,7 +281,7 @@ impl AlertManager {
             .collect()
     }
 
-    pub fn acknowledge_alert(&self, alert_id: &str) -> Result<(), Box<dyn std::error:Error>> {
+    pub fn acknowledge_alert(&self, alert_id: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut alerts = self.alerts.lock().unwrap();
         for alert in alerts.iter_mut() {
             if alert.id == alert_id {
