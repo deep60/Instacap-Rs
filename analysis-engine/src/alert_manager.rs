@@ -109,15 +109,6 @@ pub struct AlertCondition {
     pub value: String,
     pub threshold: Option<f64>,
 }
-let mut receiver_gaurd = receiver.lock().unwrap();
-if let Ok(alert) = receiver_gaurd.try_recv() {
-    // ...
-    drop(receiver_gaurd);
-    // ...
-} else {
-    drop(receiver_gaurd);
-    // ...
-}
 pub struct AlertManager {
     alerts: Arc<Mutex<VecDeque<Alert>>>,
     rules: Arc<Mutex<Vec<AlertRule>>>,
@@ -244,7 +235,7 @@ impl AlertManager {
         let current_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            as_secs();
+            .as_secs();
 
         for rule in rules.iter() {
             if rule.alert_type == alert.alert_type && rule.enabled {

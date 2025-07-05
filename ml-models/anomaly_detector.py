@@ -7,7 +7,7 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
-#from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix
 import joblib
 import logging
 from datetime import datetime, timedelta
@@ -267,7 +267,7 @@ class NetworkAnomalyDetector:
                 anomalies['dbscan'] = (dbscan_pred == -1).astype(int)
 
             # Statistical threshold-based detection
-            start_anomalies = np.zeros(len(features_df))
+            start_anomalies = np.zeros(len(features_df), dtype=bool)
             thresholds = self.models['thresholds']
 
             start_anomalies |= (features_df['packets_per_minute'] > thresholds['packet_rate_95th'])
@@ -285,7 +285,7 @@ class NetworkAnomalyDetector:
                     combined_score += anomalies[method]
             
             # Anomaly if at least 2 methods agree
-            anomalies['combined'] = (combined_score >= 2).astype(int)
+            start_anomalies['combined'] = (combined_score >= 2).astype(int)
 
             # Calculate anomaly scores
             anomaly_score = {}
@@ -331,7 +331,7 @@ class NetworkAnomalyDetector:
                     'packet_data': json.dumps(packet_data),
                     'anomaly_results': json.dumps(results['summary'])
                 } 
-                self.redis_client.hset(redis_key, redis_data)
+                self.redis_client.hset(redis_key, mapping=redis_data)
                 self.redis_client.expire(redis_key, 3600)  # Expire after 1 hour
 
             return results
@@ -367,45 +367,83 @@ class NetworkAnomalyDetector:
             logger.error(f"Failed to load models: {e}")
     
     def get_anomaly_report(self, start_time: datetime, end_time: datetime) -> Dict:
-        """Generate anomaly detection report for a time period"""
+        """
+        Generate anomaly detection report for a time period
+        """
         if not self.redis_client:
             return {'error': 'Redis not available'}
         
         try:
-            # Get anomaly data from redis
+            # Get anomaly data from Redis
             pattern = "anomaly:*"
             keys = self.redis_client.keys(pattern)
-
-            anomalies = []
-            for key in keys: 
-                data = self.redis_client.hgetall(key)
-                timestamp = datetime.fromisoformat(data['timestamp'])
-
-                if start_time <= timestamp <= end_time:
-                    anomalies.append({
-                        'timestamp': timestamp,
-                        'results': json.loads(data['anomaly_results'])
-                    })
             
-            # generate report
+            # Handle case where no keys are found or keys is None
+            if not keys or len(keys) == 0:
+                return {'message': 'No anomaly data found in Redis'}
+            
+            anomalies = []
+            for key in keys:
+                try:
+                    # Skip if key is None or empty
+                    if not key:
+                        continue
+                        
+                    data = self.redis_client.hgetall(key)
+                    
+                    # Check if data exists - Redis returns empty dict if key doesn't exist
+                    if not data:
+                        continue
+                    
+                    # Skip if required fields are missing (data is already decoded as strings)
+                    if 'timestamp' not in data or 'anomaly_results' not in data:
+                        logger.warning(f"Missing required fields in Redis key {key}")
+                        continue
+                    
+                    # Parse timestamp with error handling
+                    try:
+                        timestamp = datetime.fromisoformat(data['timestamp'])
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Invalid timestamp format in key {key}: {data['timestamp']}")
+                        continue
+                    
+                    # Parse JSON with error handling
+                    try:
+                        results = json.loads(data['anomaly_results'])
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.warning(f"Invalid JSON in anomaly_results for key {key}: {e}")
+                        continue
+                    
+                    # Check time range
+                    if start_time <= timestamp <= end_time:
+                        anomalies.append({
+                            'timestamp': timestamp,
+                            'results': results
+                        })
+                        
+                except Exception as e:
+                    logger.warning(f"Error processing Redis key {key}: {e}")
+                    continue
+            
+            # Generate report
             total_anomalies = len(anomalies)
             if total_anomalies == 0:
                 return {'message': 'No anomalies detected in the specified time period'}
             
             # Aggregate statistics
-            method_count = {}
+            method_counts = {}
             for anomaly in anomalies:
                 for method, count in anomaly['results'].items():
                     if method != 'total_samples':
-                        method_count[method] = method_count.get(method, 0) + count
+                        method_counts[method] = method_counts.get(method, 0) + count
             
             report = {
                 'time_period': {
                     'start': start_time.isoformat(),
-                    'end': end_time.isoformat(),
+                    'end': end_time.isoformat()
                 },
                 'total_anomalies': total_anomalies,
-                'method_breakdown': method_count,
+                'method_breakdown': method_counts,
                 'anomaly_timeline': [
                     {
                         'timestamp': a['timestamp'].isoformat(),
@@ -413,12 +451,15 @@ class NetworkAnomalyDetector:
                     } for a in sorted(anomalies, key=lambda x: x['timestamp'])
                 ]
             }
-
+            
             return report
-        
-        except Exception as e: 
+            
+        except Exception as e:
             logger.error(f"Failed to generate anomaly report: {e}")
             return {'error': str(e)}
+
+        
+        
 def main():
     """Example usage of the NetworkAnomalyDetector"""
 
@@ -438,7 +479,8 @@ def main():
 
     # Add some anomalies
     sample_packets.loc[950:960, 'length'] = 5000   # Large packets
-    sample_packets.loc[970:980, 'dst_port'] = range(1000, 1010)   # Port scan
+    #sample_packets.loc[970:980, 'dst_port'] = list(range(1000, 1010))   # Port scan
+    sample_packets.loc[970:980, 'dst_port'] = np.arange(1000, 1010)
 
     try:
         # Extract features
