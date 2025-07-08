@@ -217,7 +217,7 @@ class MLModelServer:
         """Initialize Redis connection"""
         try:
             self.redis_client = await aioredis.from_url(
-                self.config["redis_url"]
+                self.config["redis_url"],
                 encoding="utf-8",
                 decode_responses=True
             )
@@ -229,12 +229,12 @@ class MLModelServer:
     
     async def load_models(self):
         """Load all ML models from disk"""
-        model_paths = self.config["model_path"]
+        model_paths = self.config["model_paths"]
 
-        for model_type, model_path in model_paths.item():
+        for model_type, model_path in model_paths.items():
             try:
                 await self.load_model(model_type, model_path)
-                logger.info(f"Loaded {model_type} model from {model_paths}")
+                logger.info(f"Loaded {model_type} model from {model_path}")
             except Exception as e:
                 logger.error(f"Failed to load {model_type} model: {e}")
                 # Load default model if specific model fails
@@ -245,12 +245,13 @@ class MLModelServer:
     
     async def load_model(self, model_type: str, model_path: str):
         """Load a specific model from disk"""
-        model_path = Path(model_path)
 
-        if not model_path.exists():
+        model_path_obj = Path(model_path)
+
+        if not model_path_obj.exists():
             raise FileNotFoundError(f"Model file not found: {model_path}")
-        
-        # Load Model and associated artifacts
+
+        # Load model and associated artifacts
         with open(model_path, 'rb') as f:
             model_data = pickle.load(f)
 
@@ -276,29 +277,29 @@ class MLModelServer:
     async def load_default_model(self, model_type: str):
         """Load a default model when specific model fails"""
         logger.info(f"Loading default {model_type} model")
-
+        
         if model_type == "anomaly":
             model = IsolationForest(contamination=0.1, random_state=42)
         elif model_type == "threat":
             model = RandomForestClassifier(n_estimators=100, random_state=42)
-        else:     # performance
+        else:  # performance
             model = RandomForestClassifier(n_estimators=50, random_state=42)
 
         # Create dummy training data for default model
         X_dummy = np.random.rand(1000, 20)
         y_dummy = np.random.randint(0, 2, 1000) if model_type != "anomaly" else None
-
+        
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X_dummy)
-
+        
         if model_type == "anomaly":
             model.fit(X_scaled)
         else:
             model.fit(X_scaled, y_dummy)
 
         feature_names = [f"feature_{i}" for i in range(20)]
-
-       container = ModelContainer(
+        
+        container = ModelContainer(
             model=model,
             scaler=scaler,
             feature_names=feature_names,
@@ -306,8 +307,8 @@ class MLModelServer:
             accuracy=0.5,
             created_at=datetime.now(),
             last_used=datetime.now()
-        ) 
-    
+        )
+
         self.models[model_type] = container
     
     async def make_prediction(self, request: PredictionRequest) -> PredictionResponse:
@@ -325,7 +326,7 @@ class MLModelServer:
 
             # make prediction
             with PREDICTION_DURATION.labels(model_type=request.model_type).time():
-                prediction, confindence = await self.predict_with_model(
+                prediction, confidence = await self.predict_with_model(
                     container, features, request.model_type
                 )
             
@@ -338,13 +339,13 @@ class MLModelServer:
 
             # Cache prediction if Redis is available
             if self.redis_client:
-                await self.cache_prediction(request, prediction, confindence)
+                await self.cache_prediction(request, prediction, confidence)
 
             processing_time = (time.time() - start_time) * 1000
 
             return PredictionResponse(
                 prediction=prediction,
-                confidence=confindence,
+                confidence=confidence,
                 model_version=container.version,
                 timestamp=datetime.now(),
                 processing_time_ms=processing_time,
@@ -363,7 +364,7 @@ class MLModelServer:
         elif model_type == "threats":
             return self._engineer_threat_features(raw_features)
         else:    # performance
-            return self._engineer_performance_fetures(raw_features)
+            return self._engineer_performance_features(raw_features)
         
     def _engineer_anomaly_features(self, features: Dict[str, Any]) -> np.ndarray:
         """Engineer features for anomaly detection"""
