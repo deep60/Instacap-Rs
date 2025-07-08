@@ -25,7 +25,7 @@ from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix
 import redis
 import aioredis
-# from prometheus_client import Counter, Histogram, Gauge, start_http_server
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
 
 # Logging configuration
 logging.basicConfig(
@@ -76,11 +76,11 @@ class PredictionRequest(BaseModel):
 
 class PredictionResponse(BaseModel): 
     prediction: Any
-    confindence: float
+    confidence: float
     model_version: str
     timestamp: datetime
     processing_time_ms: float
-    metadata: Dict[str, Any] = Field(default_factory=Dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class ModelMetrics(BaseModel):
     model_type: str
@@ -108,6 +108,8 @@ class MLModelServer:
         self.models: Dict[str, ModelContainer] = {}
         self.redis_client: Optional[aioredis.Redis] = None
         self.config = self._load_config(config_path)
+        self.setup_routes()
+        self.setup_middleware()
     
     def _load_config(self, config_path: str) -> Dict:
         """Load configuration from JSON file"""
@@ -217,7 +219,7 @@ class MLModelServer:
             self.redis_client = await aioredis.from_url(
                 self.config["redis_url"]
                 encoding="utf-8",
-                decode_response=True
+                decode_responses=True
             )
             await self.redis_client.ping()
             logger.info("Redis connection established")
@@ -342,7 +344,7 @@ class MLModelServer:
 
             return PredictionResponse(
                 prediction=prediction,
-                confindence=confindence,
+                confidence=confindence,
                 model_version=container.version,
                 timestamp=datetime.now(),
                 processing_time_ms=processing_time,
@@ -384,8 +386,8 @@ class MLModelServer:
         # port analysis
         src_port = features.get('src_port', 0)
         dst_port = features.get('dst_port', 0)
-        features.extend([
-            1 if src_port < 1024 else 0  # well-known port
+        feature_vector.extend([
+            1 if src_port < 1024 else 0,  # well-known port
             1 if dst_port < 1024 else 0, 
             1 if src_port == dst_port else 0,   # same port
         ])
@@ -396,4 +398,154 @@ class MLModelServer:
         feature_vector.extend(flags_features)
 
         #time-based features
-        hour = datetime.fromtimestamp(features.get('timestamp'))
+        hour = datetime.fromtimestamp(features.get('timestamp', time.time())).hour
+        feature_vector.extend([
+            1 if 9 <= hour <= 17 else 0,     # business hour
+            1 if hour <= 6 or hour >= 22 else 0  # night hours
+        ])
+
+        return np.array(feature_vector).reshape(1, -1)
+    
+    def _engineer_threat_features(self, features: Dict[str, Any]) -> np.ndarray:
+        """Engineer features for threat detection"""
+        feature_vector = []
+
+        # all anomaly fetures
+        anomaly_features = self._engineer_anomaly_features(features).flatten()
+        feature_vector.extend(anomaly_features)
+
+        # additional threat-specific features
+        # suspicious port combinations
+        src_port = features.get('src_port', 0)
+        dst_port = features.get('dst_port', 0) 
+        suspicious_ports = [22, 23, 135, 139, 445, 1433, 3389, 5432]
+
+        feature_vector.extend([
+            1 if src_port in suspicious_ports else 0,
+            1 if dst_port in suspicious_ports else 0, 
+            1 if src_port > 49152 else 0,   # ephemeral port
+        ])
+
+        # payload analysis
+        payload_size = features.get('packet_size', 0) - 40     # minus headers
+        feature_vector.extend([
+            1 if payload_size > 1400 else 0,     # large payload
+            1 if payload_size == 0 else 0  # empty payload
+        ])
+
+        return np.array(feature_vector).reshape(1, -1)
+    
+    def _engineer_performance_features(self, features: Dict[str, Any]) -> np.ndarray:
+        """Engineer features for threat detection"""
+        feature_vector = []
+
+        # flow-based features
+        if 'flow_features' in features:
+            flow = features['flow_features']
+            feature_vector.extend([
+                flow.get('duration', 0),
+                flow.get('total_packets', 0),
+                flow.get('total_bytes', 0),
+                flow.get('avg_packet_size', 0),
+                flow.get('packet_rate', 0),
+                flow.get('byte_rate', 0),
+                flow.get('unique_ips', 0),
+                flow.get('bidirectional_packets', 0),
+            ])
+        else:
+            feature_vector.extend([0] * 8)
+
+        # Network conditions
+        feature_vector.extend([
+            features.get('inter_arrival_time', 0),
+            features.get('window_size', 0),
+            features.get('packet_size', 0),
+        ])
+
+        #time-based features
+        hour = datetime.fromtimestamp(features.get('timestamp', time.time())).hour
+        feature_vector.extend([
+            hour / 24.0,     # normalized hour
+            1 if 9 <= hour <= 17 else 0  # business hours
+        ])
+
+        return np.array(feature_vector).reshape(1, -1)
+    
+    async def predict_with_model(self, container: ModelContainer, features: np.ndarray, model_type: str) -> Tuple[Any, float]:
+        """Make prediction with specific model"""
+
+        #scale features
+        if hasattr(container.scaler, 'transform'):
+            features_scaled = container.scaler.transform(features)
+        else:
+            features_scaled = features
+
+        #Make prediction
+        if model_type == "anomaly":
+            prediction = container.model.predict(features_scaled)[0]
+            # for anomaly detection, confidence is the anomaly score
+            if hasattr(container.model, 'decision_function'):
+                confidence = abs(container.model.decision_function(features_scaled)[0])
+            else:
+                confidence = 0.5
+        else:
+            prediction = container.model.predict(features_scaled)[0]
+            # for classification, get prediction probabilities
+            if hasattr(container.model, 'predict_proba'):
+                probabilities = container.model.predict_proba(features_scaled)[0]
+                confidence = max(probabilities)
+            else:
+                confidence = 0.5
+        return prediction, confidence
+
+    async def cache_prediction(self, request: PredictionRequest, prediction: Any, confidence: float):
+        """Cache prediction result in redis"""
+        try:
+            cache_key = f"prediction:{request.model_type}:{hash(str(request.features))}" 
+            cache_data = {
+                'prediction': prediction,
+                'confidence': confidence,
+                'timestamp': datetime.now().isoformat(),
+                'model_type': request.model_type
+            }
+
+            await self.redis_client.setex(
+                cache_key,
+                300,    # 5 minutes TTL
+                json.dumps(cache_data, default=str)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to cache prediction: {e}")
+    
+    async def retrain_model_background(self, model_type: str):
+        """Background task for model retraining"""
+        try:
+            logger.info(f"Starting retrainig for {model_type} model")
+
+            # this would typically involve:
+            # 1. fetching new training data
+            # 2. retraining the model
+            # 3. evaluating performance
+            # 4. updating the model if performance improves
+
+            # placeholder for actual retraining logic
+            await asyncio.sleep(10)     # simulate training time
+            logger.info(f"Retraining completed for {model_type} model")
+        
+        except Exception as e:
+            logger.error(f"Retraining failed for {model_type}: {e}")
+
+def main():
+    """Main entry point"""
+    server = MLModelServer()
+    uvicorn.run(
+        server.app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info",
+        access_log=True,
+        workers=1        # keep as 1 for shared state
+    )
+
+if __name__ == "__main__":
+    main()
