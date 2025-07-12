@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 import asyncio
 import aioredis
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union
 import json
 import warnings
 warnings.filterwarnings('ignore')
@@ -26,7 +26,7 @@ class PerformancePredictor:
 
         # Initialize models
         self.latency_model = None
-        self.throughout_model = None
+        self.throughput_model = None
         self.packet_loss_model = None
 
         # features scalers
@@ -46,6 +46,7 @@ class PerformancePredictor:
             'max_depth': 20,
             'min_samples_split': 5,
             'min_samples_leaf': 2,
+            'criterion': 'squared_error',
             'random_state': 42
         }
 
@@ -53,6 +54,7 @@ class PerformancePredictor:
            'n_estimators': 100,
             'max_depth': 8,
             'learning_rate': 0.1,
+            'criterion': 'squared_error',
             'random_state': 42
         }
 
@@ -186,19 +188,18 @@ class PerformancePredictor:
         self.logger.info("Training latency prediction model...")
         latency_model = GradientBoostingRegressor(**self.gb_params)
         latency_model.fit(X_scaled, y['latency'])
-        self.latency_model = latency_model
+        #self.latency_model = latency_model
 
         # Train throughput prediction model
         self.logger.info("Training throughput prediction model...")
         throughput_model = RandomForestRegressor(**self.rf_params)
         throughput_model.fit(X_scaled, y['throughput'])
-        self.throughput_model = throughput_model
 
         # Train packet loss prediction model
         self.logger.info("Trainig packet loss prediction model...")
         packet_loss_model = GradientBoostingRegressor(**self.gb_params)
         packet_loss_model.fit(X_scaled, y['packet_loss'])
-        self.packet_loss_model = packet_loss_model
+        # self.packet_loss_model = packet_loss_model
 
         # Store features importance
         self.feature_importance = {
@@ -223,6 +224,13 @@ class PerformancePredictor:
         features_scaled = self.scaler.transform(features)
 
         # Make predictions
+        if self.latency_model is None:
+            raise ValueError("Latency model is not trained")
+        if self.throughput_model is None:
+            raise ValueError("Throughput model is not trained")
+        if self.packet_loss_model is None:
+            raise ValueError("Packet loss model is not trained")
+        
         latency_pred = self.latency_model.predict(features_scaled)[0]
         throughput_pred = self.throughout_model.predict(features_scaled)[0]
         packet_loss_pred = self.packet_loss_model.predict(features_scaled)[0]
@@ -308,27 +316,44 @@ class PerformancePredictor:
             Dictionary indicating anomaly status for each metric
         """
         predictions = self.predict_performance(current_data)
+        
         anomalies = {}
-
+        
         # Check latency anomaly
-        actual_latency = current_data.get('actual_latency_ms', 0),
-        predicted_latency = predictions['predicted_latency_ms']
+        actual_latency_raw = current_data.get('actual_latency_ms', 0)
+        if isinstance(actual_latency_raw, (list, tuple)) and len(actual_latency_raw) > 0:
+            actual_latency = float(actual_latency_raw[0])
+        else:
+            actual_latency = float(actual_latency_raw) if actual_latency_raw is not None else 0.0
+        
+        predicted_latency = float(predictions['predicted_latency_ms'])
         latency_diff = abs(actual_latency - predicted_latency)
         anomalies['latency_anomaly'] = latency_diff > (predicted_latency * threshold_factor)
-
+        
         # Check throughput anomaly
-        actual_throughput = current_data.get('actual_throughput_mbps', 0)
-        predicted_throughput = predictions['predicted_throughput_mbps']
+        actual_throughput_raw = current_data.get('actual_throughput_mbps', 0)
+        if isinstance(actual_throughput_raw, (list, tuple)) and len(actual_throughput_raw) > 0:
+            actual_throughput = float(actual_throughput_raw[0])
+        else:
+            actual_throughput = float(actual_throughput_raw) if actual_throughput_raw is not None else 0.0
+        
+        predicted_throughput = float(predictions['predicted_throughput_mbps'])
         throughput_diff = abs(actual_throughput - predicted_throughput)
         anomalies['throughput_anomaly'] = throughput_diff > (predicted_throughput * threshold_factor)
-
-        # check packet loss anomaly
-        actual_packet_loss = current_data.get('actual_packet_loss_percent', 0)
-        predicted_packet_loss = predictions['predicted_packet_losspercent']
+        
+        # Check packet loss anomaly
+        actual_packet_loss_raw = current_data.get('actual_packet_loss_percent', 0)
+        if isinstance(actual_packet_loss_raw, (list, tuple)) and len(actual_packet_loss_raw) > 0:
+            actual_packet_loss = float(actual_packet_loss_raw[0])
+        else:
+            actual_packet_loss = float(actual_packet_loss_raw) if actual_packet_loss_raw is not None else 0.0
+        
+        predicted_packet_loss = float(predictions['predicted_packet_loss_percent'])
         packet_loss_diff = abs(actual_packet_loss - predicted_packet_loss)
         anomalies['packet_loss_anomaly'] = packet_loss_diff > (predicted_packet_loss * threshold_factor)
-
+        
         return anomalies
+
 
     async def continuous_predictions(self, interval_seconds: int = 60):
         """
@@ -341,6 +366,12 @@ class PerformancePredictor:
 
         while True:
             try:
+                # Check if redis client is available
+                if self.redis_client is None:
+                    self.logger.error("Redis client is not initialized")
+                    await asyncio.sleep(interval_seconds)
+                    continue
+
                 # Get current network data from Redis
                 current_data_str = await self.redis_client.get('current_network_data')
                 if current_data_str:
