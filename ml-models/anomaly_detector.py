@@ -81,17 +81,29 @@ class NetworkAnomalyDetector:
     def _setup_redis(self):
         """Setup Redis connection for real-time data"""
         try:
+            # Ensure we're using the synchronous Redis client
             self.redis_client = redis.Redis(
                 host=self.config['redis']['host'],
                 port=self.config['redis']['port'],
                 db=self.config['redis']['db'],
                 password=self.config['redis']['password'],
-                decode_responses=True
+                decode_responses=True,  # This ensures string responses instead of bytes
+                socket_timeout=5,       # Add timeout for better error handling
+                socket_connect_timeout=5,
+                retry_on_timeout=True
             )
+            # Test the connection
             self.redis_client.ping()
             logger.info("Redis connection established")
-        except Exception as e:
+        
+        except redis.ConnectionError as e:
             logger.warning(f"Redis connection failed: {e}")
+            self.redis_client = None
+        except redis.TimeoutError as e:
+            logger.warning(f"Redis connection timeout: {e}")
+            self.redis_client = None
+        except Exception as e:
+            logger.warning(f"Redis setup failed: {e}")
             self.redis_client = None
     
     def extract_features(self, packets_df: pd.DataFrame) -> pd.DataFrame:
@@ -382,80 +394,116 @@ class NetworkAnomalyDetector:
             logger.error(f"Failed to load models: {e}")
     
     def get_anomaly_report(self, start_time: datetime, end_time: datetime) -> Dict:
-        """
-        Generate anomaly detection report for a time period
-        """
         if not self.redis_client:
             return {'error': 'Redis not available'}
-        
+    
         try:
-            # Get anomaly data from Redis
+            # Get anomaly data from Redis using scan_iter for better compatibility
             pattern = "anomaly:*"
-            keys = self.redis_client.keys(pattern)
-            
-            # Handle case where no keys are found or keys is None
-            if not keys or len(keys) == 0:
+            keys = []
+        
+            # Use scan_iter instead of keys() for better compatibility and performance
+            try:
+                for key in self.redis_client.scan_iter(match=pattern):
+                    keys.append(key)
+            except Exception as e:
+                logger.warning(f"scan_iter failed, trying keys(): {e}")
+                try:
+                    # Fallback to keys() method
+                    raw_keys = self.redis_client.keys(pattern)
+                    # Ensure we have a list
+                    if isinstance(raw_keys, list):
+                        keys = raw_keys
+                    else:
+                        keys = list(raw_keys) if raw_keys else []
+                except Exception as e2:
+                    logger.error(f"Both scan_iter and keys() failed: {e2}")
+                    return {'error': 'Failed to retrieve keys from Redis'}
+        
+            # Handle case where no keys are found
+            if not keys:
                 return {'message': 'No anomaly data found in Redis'}
-            
+        
             anomalies = []
             for key in keys:
                 try:
                     # Skip if key is None or empty
                     if not key:
                         continue
-                        
-                    data = self.redis_client.hgetall(key)
-                    
-                    # Check if data exists - Redis returns empty dict if key doesn't exist
-                    if not data:
+                
+                    # Ensure key is a string (handle bytes if necessary)
+                    if isinstance(key, bytes):
+                        key = key.decode('utf-8')
+                
+                    # Get data from Redis hash
+                    try:
+                        data = self.redis_client.hgetall(key)
+                    except Exception as e:
+                        logger.warning(f"Failed to get data for key {key}: {e}")
                         continue
-                    
-                    # Skip if required fields are missing (data is already decoded as strings)
-                    if 'timestamp' not in data or 'anomaly_results' not in data:
+                
+                    # Check if data exists and is a dict
+                    if not data or not isinstance(data, dict):
+                        continue
+                
+                    # Handle case where data values might be bytes
+                    processed_data = {}
+                    for k, v in data.items():
+                        # Convert bytes to string if needed
+                        if isinstance(k, bytes):
+                            k = k.decode('utf-8')
+                        if isinstance(v, bytes):
+                            v = v.decode('utf-8')
+                            processed_data[k] = v
+                
+                    # Skip if required fields are missing
+                    if 'timestamp' not in processed_data or 'anomaly_results' not in processed_data:
                         logger.warning(f"Missing required fields in Redis key {key}")
                         continue
-                    
+                
                     # Parse timestamp with error handling
                     try:
-                        timestamp = datetime.fromisoformat(data['timestamp'])
+                        timestamp = datetime.fromisoformat(processed_data['timestamp'])
                     except (ValueError, TypeError) as e:
-                        logger.warning(f"Invalid timestamp format in key {key}: {data['timestamp']}")
+                        logger.warning(f"Invalid timestamp format in key {key}: {processed_data['timestamp']}")
                         continue
-                    
+                
                     # Parse JSON with error handling
                     try:
-                        results = json.loads(data['anomaly_results'])
+                        results = json.loads(processed_data['anomaly_results'])
                     except (json.JSONDecodeError, TypeError) as e:
                         logger.warning(f"Invalid JSON in anomaly_results for key {key}: {e}")
                         continue
-                    
+                
                     # Check time range
                     if start_time <= timestamp <= end_time:
                         anomalies.append({
                             'timestamp': timestamp,
                             'results': results
                         })
-                        
+                    
                 except Exception as e:
                     logger.warning(f"Error processing Redis key {key}: {e}")
                     continue
-            
+        
             # Generate report
             total_anomalies = len(anomalies)
             if total_anomalies == 0:
                 return {'message': 'No anomalies detected in the specified time period'}
-            
+
             # Aggregate statistics
             method_counts = {}
             for anomaly in anomalies:
-                for method, count in anomaly['results'].items():
-                    if method != 'total_samples':
-                        method_counts[method] = method_counts.get(method, 0) + count
-            
+                results = anomaly.get('results', {})
+            for method, count in results.items():
+                if method != 'total_samples' and isinstance(count, (int, float)):
+                    method_counts[method] = method_counts.get(method, 0) + count
+
+
             report = {
                 'time_period': {
-                    'start': start_time.isoformat(),
-                    'end': end_time.isoformat()
+                'start': start_time.isoformat(),
+                'end': end_time.isoformat()
                 },
                 'total_anomalies': total_anomalies,
                 'method_breakdown': method_counts,
@@ -463,12 +511,13 @@ class NetworkAnomalyDetector:
                     {
                         'timestamp': a['timestamp'].isoformat(),
                         'anomalies': a['results']
-                    } for a in sorted(anomalies, key=lambda x: x['timestamp'])
-                ]
-            }
-            
-            return report
-            
+                    } for a in sorted(anomalies, key=lambda x: x['timestamp'])]
+                }
+            return report 
+
+        
+
+        
         except Exception as e:
             logger.error(f"Failed to generate anomaly report: {e}")
             return {'error': str(e)}

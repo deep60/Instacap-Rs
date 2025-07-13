@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 import asyncio
 import aioredis
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List, Tuple, Optional, Union, Any
 import json
 import warnings
 warnings.filterwarnings('ignore')
@@ -104,8 +104,8 @@ class PerformancePredictor:
         
         # connection features
         features.extend([
-            packet_data.get('unique_score', 0),
-            packet_data.get('unique_distribution', 0),
+            packet_data.get('unique_sources', 0),  # Fixed typo: was 'unique_score'
+            packet_data.get('unique_destinations', 0),  # Fixed typo: was 'unique_distribution'
             packet_data.get('active_connections', 0),
             packet_data.get('new_connections', 0)
         ])
@@ -134,10 +134,10 @@ class PerformancePredictor:
         # historical performance features
         features.extend([
             packet_data.get('prev_latency', 0),
-            packet_data.get('prev_throughout', 0),
+            packet_data.get('prev_throughput', 0),  # Fixed typo: was 'prev_throughout'
             packet_data.get('prev_packet_loss', 0),
             packet_data.get('latency_trend', 0),
-            packet_data.get('throughout_trend', 0)
+            packet_data.get('throughput_trend', 0)  # Fixed typo: was 'throughout_trend'
         ])
 
         return np.array(features)
@@ -162,7 +162,7 @@ class PerformancePredictor:
 
             # Extract targets
             latency_targets.append(record.get('latency_ms', 0))
-            throughput_targets.append(record.get('throughout_mbps', 0))
+            throughput_targets.append(record.get('throughput_mbps', 0))  # Fixed typo: was 'throughout_mbps'
             packet_loss_targets.append(record.get('packet_loss_percent', 0))
 
         X = np.array(features)
@@ -186,53 +186,50 @@ class PerformancePredictor:
 
         # Train latency prediction model
         self.logger.info("Training latency prediction model...")
-        latency_model = GradientBoostingRegressor(**self.gb_params)
-        latency_model.fit(X_scaled, y['latency'])
-        #self.latency_model = latency_model
+        self.latency_model = GradientBoostingRegressor(**self.gb_params)
+        self.latency_model.fit(X_scaled, y['latency'])
 
         # Train throughput prediction model
         self.logger.info("Training throughput prediction model...")
-        throughput_model = RandomForestRegressor(**self.rf_params)
-        throughput_model.fit(X_scaled, y['throughput'])
+        self.throughput_model = RandomForestRegressor(**self.rf_params)
+        self.throughput_model.fit(X_scaled, y['throughput'])
 
         # Train packet loss prediction model
-        self.logger.info("Trainig packet loss prediction model...")
-        packet_loss_model = GradientBoostingRegressor(**self.gb_params)
-        packet_loss_model.fit(X_scaled, y['packet_loss'])
-        # self.packet_loss_model = packet_loss_model
+        self.logger.info("Training packet loss prediction model...")
+        self.packet_loss_model = GradientBoostingRegressor(**self.gb_params)
+        self.packet_loss_model.fit(X_scaled, y['packet_loss'])
 
         # Store features importance
         self.feature_importance = {
-            'latency': latency_model.feature_importances_,
-            'throughput': throughput_model.feature_importances_,
-            'packet_loss': packet_loss_model.feature_importances_
+            'latency': self.latency_model.feature_importances_,
+            'throughput': self.throughput_model.feature_importances_,
+            'packet_loss': self.packet_loss_model.feature_importances_
         }
 
         self.logger.info("Model training completed")
 
-    def predict_performance(self, packet_data: Dict) -> Dict[str, float]:
+    def predict_performance(self, packet_data: Dict) -> Dict[str, Union[float, str]]:
         """Predict network performance metrics for given packet data.
         Args:
             packet_data: Current packet/traffic data
         Returns:
             Dictionary containing predicted latency, throughput, and packet loss"""
-        if not all([self.latency_model, self.throughout_model, self.packet_loss_model]):
-            raise ValueError("Models not trained. Call train_models() first.")
+        
+        # Check if models are trained
+        if self.latency_model is None:
+            raise ValueError("Latency model not trained. Call train_models() first.")
+        if self.throughput_model is None:
+            raise ValueError("Throughput model not trained. Call train_models() first.")
+        if self.packet_loss_model is None:
+            raise ValueError("Packet loss model not trained. Call train_models() first.")
         
         # Extract and scale features
         features = self.extract_features(packet_data).reshape(1, -1)
         features_scaled = self.scaler.transform(features)
 
         # Make predictions
-        if self.latency_model is None:
-            raise ValueError("Latency model is not trained")
-        if self.throughput_model is None:
-            raise ValueError("Throughput model is not trained")
-        if self.packet_loss_model is None:
-            raise ValueError("Packet loss model is not trained")
-        
         latency_pred = self.latency_model.predict(features_scaled)[0]
-        throughput_pred = self.throughout_model.predict(features_scaled)[0]
+        throughput_pred = self.throughput_model.predict(features_scaled)[0]
         packet_loss_pred = self.packet_loss_model.predict(features_scaled)[0]
 
         # Ensure predictions are within reasonable bounds
@@ -292,7 +289,7 @@ class PerformancePredictor:
 
         for metric_name, model in [
             ('latency', self.latency_model),
-            ('throughput', self.throughout_model),
+            ('throughput', self.throughput_model),
             ('packet_loss', self.packet_loss_model)
         ]:
             y_pred = model.predict(X_test_scaled)
@@ -305,6 +302,29 @@ class PerformancePredictor:
                 'rmse': np.sqrt(mean_squared_error(y_true, y_pred))
             }
         return evaluation_results
+    
+    def _safe_float_conversion(self, value: Any) -> float:
+        """
+        Safely convert a value to float, handling various input types.
+        Args:
+            value: Input value to convert
+        Returns:
+            Float value, defaulting to 0.0 if conversion fails
+        """
+        if value is None:
+            return 0.0
+        
+        # Handle list/tuple - take first element
+        if isinstance(value, (list, tuple)):
+            if len(value) > 0:
+                return self._safe_float_conversion(value[0])
+            return 0.0
+        
+        # Handle numeric types
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return 0.0
     
     def detect_performance_anomalies(self, current_data: Dict, threshold_factor: float = 2.0) -> Dict:
         """
@@ -320,40 +340,24 @@ class PerformancePredictor:
         anomalies = {}
         
         # Check latency anomaly
-        actual_latency_raw = current_data.get('actual_latency_ms', 0)
-        if isinstance(actual_latency_raw, (list, tuple)) and len(actual_latency_raw) > 0:
-            actual_latency = float(actual_latency_raw[0])
-        else:
-            actual_latency = float(actual_latency_raw) if actual_latency_raw is not None else 0.0
-        
+        actual_latency = self._safe_float_conversion(current_data.get('actual_latency_ms', 0))
         predicted_latency = float(predictions['predicted_latency_ms'])
         latency_diff = abs(actual_latency - predicted_latency)
         anomalies['latency_anomaly'] = latency_diff > (predicted_latency * threshold_factor)
         
         # Check throughput anomaly
-        actual_throughput_raw = current_data.get('actual_throughput_mbps', 0)
-        if isinstance(actual_throughput_raw, (list, tuple)) and len(actual_throughput_raw) > 0:
-            actual_throughput = float(actual_throughput_raw[0])
-        else:
-            actual_throughput = float(actual_throughput_raw) if actual_throughput_raw is not None else 0.0
-        
+        actual_throughput = self._safe_float_conversion(current_data.get('actual_throughput_mbps', 0))
         predicted_throughput = float(predictions['predicted_throughput_mbps'])
         throughput_diff = abs(actual_throughput - predicted_throughput)
         anomalies['throughput_anomaly'] = throughput_diff > (predicted_throughput * threshold_factor)
         
         # Check packet loss anomaly
-        actual_packet_loss_raw = current_data.get('actual_packet_loss_percent', 0)
-        if isinstance(actual_packet_loss_raw, (list, tuple)) and len(actual_packet_loss_raw) > 0:
-            actual_packet_loss = float(actual_packet_loss_raw[0])
-        else:
-            actual_packet_loss = float(actual_packet_loss_raw) if actual_packet_loss_raw is not None else 0.0
-        
+        actual_packet_loss = self._safe_float_conversion(current_data.get('actual_packet_loss_percent', 0))
         predicted_packet_loss = float(predictions['predicted_packet_loss_percent'])
         packet_loss_diff = abs(actual_packet_loss - predicted_packet_loss)
         anomalies['packet_loss_anomaly'] = packet_loss_diff > (predicted_packet_loss * threshold_factor)
         
         return anomalies
-
 
     async def continuous_predictions(self, interval_seconds: int = 60):
         """
@@ -387,9 +391,9 @@ class PerformancePredictor:
                         ex=3600                 # Expire after 1 hour
                     ) 
 
-                    # Detection anomalies
+                    # Detect anomalies
                     anomalies = self.detect_performance_anomalies(current_data)
-                    if any (anomalies.values()):
+                    if any(anomalies.values()):
                         await self.redis_client.lpush('performance_anomalies', json.dumps(anomalies))
 
                     self.logger.info(f"Performance predictions completed: {predictions}")
@@ -399,22 +403,23 @@ class PerformancePredictor:
             except Exception as e:
                 self.logger.error(f"Error in continuous prediction: {e}")
                 await asyncio.sleep(interval_seconds)
+    
     def save_models(self, model_path: str = './models'):
         """Save trained models to disk"""
         import os
         os.makedirs(model_path, exist_ok=True)
 
         joblib.dump(self.latency_model, f'{model_path}/latency_model.pkl')
-        joblib.dump(self.throughout_model, f'{model_path}/throughput_model.pkl')
+        joblib.dump(self.throughput_model, f'{model_path}/throughput_model.pkl')
         joblib.dump(self.packet_loss_model, f'{model_path}/packet_loss_model.pkl')
         joblib.dump(self.scaler, f'{model_path}/scaler.pkl')
 
-        self.logger.info(f"Model saved to {model_path}")
+        self.logger.info(f"Models saved to {model_path}")
 
     def load_models(self, model_path: str = './models'):
         """Load trained models from disk"""
         self.latency_model = joblib.load(f'{model_path}/latency_model.pkl')
-        self.throughout_model = joblib.load(f'{model_path}/throughput_model.pkl')
+        self.throughput_model = joblib.load(f'{model_path}/throughput_model.pkl')
         self.packet_loss_model = joblib.load(f'{model_path}/packet_loss_model.pkl')
         self.scaler = joblib.load(f'{model_path}/scaler.pkl')
 
