@@ -81,6 +81,9 @@ class NetworkAnomalyDetector:
     def _setup_redis(self):
         """Setup Redis connection for real-time data"""
         try:
+            # Explicitly import and use the synchronous Redis client
+            import redis as sync_redis
+
             # Ensure we're using the synchronous Redis client
             self.redis_client = redis.Redis(
                 host=self.config['redis']['host'],
@@ -93,13 +96,19 @@ class NetworkAnomalyDetector:
                 retry_on_timeout=True
             )
             # Test the connection
-            self.redis_client.ping()
-            logger.info("Redis connection established")
-        
-        except redis.ConnectionError as e:
+            ping_result = self.redis_client.ping()
+            if ping_result:
+                logger.info("Redis connection established")
+            else:
+                logger.warning("Redis ping failed")
+                self.redis_client = None
+        except ImportError:
+            logger.error("Redis package not installed")
+            self.redis_client = None
+        except sync_redis.ConnectionError as e:
             logger.warning(f"Redis connection failed: {e}")
             self.redis_client = None
-        except redis.TimeoutError as e:
+        except sync_redis.TimeoutError as e:
             logger.warning(f"Redis connection timeout: {e}")
             self.redis_client = None
         except Exception as e:
@@ -404,18 +413,43 @@ class NetworkAnomalyDetector:
         
             # Use scan_iter instead of keys() for better compatibility and performance
             try:
-                for key in self.redis_client.scan_iter(match=pattern):
-                    keys.append(key)
+                # Check if redis client has scan_iter method
+                if hasattr(self.redis_client, 'scan_iter'):
+                    for key in self.redis_client.scan_iter(match=pattern):
+                        keys.append(key)
+                else:
+                    # Fallback method - try to get keys directly
+                    raise AttributeError("scan_iter not available")
             except Exception as e:
-                logger.warning(f"scan_iter failed, trying keys(): {e}")
+                logger.warning(f"scan_iter failed, trying alternative approach: {e}")
                 try:
-                    # Fallback to keys() method
-                    raw_keys = self.redis_client.keys(pattern)
-                    # Ensure we have a list
-                    if isinstance(raw_keys, list):
-                        keys = raw_keys
-                    else:
-                        keys = list(raw_keys) if raw_keys else []
+                    # Check if we can call keys() synchronously
+                    import inspect
+                    if hasattr(self.redis_client, 'keys'):
+                        keys_method = getattr(self.redis_client, 'keys')
+
+                        # if it's a coroutine, we can't use it in sync context
+                        if inspect.iscoroutinefunction(keys_method):
+                            logger.error("Async Redis client detected but sync code. Please use sync Redis client")
+                            return {'error': 'Async Redis client detected. Please configure synchronous Redis client.'}
+                        
+                        # try to call it
+                        raw_keys = keys_method(pattern)
+
+                        # Handle different return types
+                        if raw_keys is None:
+                            keys = []
+                        elif isinstance(raw_keys, (list, tuple)):
+                            keys = list(raw_keys)
+                        elif hasattr(raw_keys, '__iter__'):
+                            try:
+                                keys = list(raw_keys)
+                            except TypeError:
+                                logger.error("Cannot iterate over Redis keys response")
+                                return {'error': 'Cannot iterate over Redis keys response'}
+                        else:
+                            logger.error("Redis client doesn't have keys method")
+                            return {'error': 'Failed to retrieve keys from redis'}
                 except Exception as e2:
                     logger.error(f"Both scan_iter and keys() failed: {e2}")
                     return {'error': 'Failed to retrieve keys from Redis'}
@@ -437,7 +471,17 @@ class NetworkAnomalyDetector:
                 
                     # Get data from Redis hash
                     try:
-                        data = self.redis_client.hgetall(key)
+                        # check if hegtall is a coroutine function
+                        if hasattr(self.redis_client, 'hgetall'):
+                            hgetall_method = getattr(self.redis_client, 'hgetall')
+
+                            if inspect.iscoroutinefunction(hgetall_method):
+                                logger.error("Async Redis client detected in hgetall")
+                                continue   
+                            data = hgetall_method(key)
+                        else:
+                            logger.warning(f"Redis client doesn't have hegtall method")
+                            continue
                     except Exception as e:
                         logger.warning(f"Failed to get data for key {key}: {e}")
                         continue
