@@ -30,11 +30,15 @@ from prometheus_client import Counter, Histogram, Gauge, start_http_server
 # Logging configuration
 logging.basicConfig(
     level=logging.INFO,
-    format='%(actime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 # Prometheus metrics
+PREDICTIONS_TOTAL = Counter('ml_predictions_total', 'Total predictions made', ['model_type', 'result'])
+PREDICTION_DURATION = Histogram('ml_prediction_duration_seconds', 'Time spent on predictions', ['model_type'])
+MODEL_ACCURACY = Gauge('ml_model_accuracy', 'Model accuracy', ['model_type'])
+ACTIVE_MODELS = Gauge('ml_active_models', 'Number of active models loaded')
 
 # Pydantic models for API
 class PacketFeatures(BaseModel):
@@ -113,7 +117,6 @@ class MLModelServer:
     
     def _load_config(self, config_path: str) -> Dict:
         """Load configuration from JSON file"""
-
         try:
             with open(config_path, 'r') as f:
                 return json.load(f)
@@ -132,7 +135,7 @@ class MLModelServer:
                     "normalize_features": True
                 },
                 "thresholds": {
-                    "anomaly_thresholds": 0.5,
+                    "anomaly_threshold": 0.5,
                     "threat_threshold": 0.7,
                     "performance_threshold": 0.6
                 }
@@ -224,7 +227,7 @@ class MLModelServer:
             await self.redis_client.ping()
             logger.info("Redis connection established")
         except Exception as e:
-            logger.info(f"Failed to connect to Redis: {e}")
+            logger.warning(f"Failed to connect to Redis: {e}")
             self.redis_client = None
     
     async def load_models(self):
@@ -241,11 +244,9 @@ class MLModelServer:
                 await self.load_default_model(model_type)
 
         ACTIVE_MODELS.set(len(self.models))
-
     
     async def load_model(self, model_type: str, model_path: str):
         """Load a specific model from disk"""
-
         model_path_obj = Path(model_path)
 
         if not model_path_obj.exists():
@@ -287,14 +288,16 @@ class MLModelServer:
 
         # Create dummy training data for default model
         X_dummy = np.random.rand(1000, 20)
-        y_dummy = np.random.randint(0, 2, 1000) if model_type != "anomaly" else None
+        y_dummy = np.random.randint(0, 2, 1000)
         
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X_dummy)
         
         if model_type == "anomaly":
-            model.fit(X_scaled)
+            # IsolationForest - pass y=None explicitly to satisfy type checker
+            model.fit(X_scaled, None)
         else:
+            # Classification models need both X and y
             model.fit(X_scaled, y_dummy)
 
         feature_names = [f"feature_{i}" for i in range(20)]
@@ -324,7 +327,7 @@ class MLModelServer:
             # Feature engineering 
             features = await self.engineer_features(request.features, request.model_type)
 
-            # make prediction
+            # Make prediction
             with PREDICTION_DURATION.labels(model_type=request.model_type).time():
                 prediction, confidence = await self.predict_with_model(
                     container, features, request.model_type
@@ -358,10 +361,9 @@ class MLModelServer:
         
     async def engineer_features(self, raw_features: Dict[str, Any], model_type: str) -> np.ndarray:
         """Engineer features for model input"""
-
         if model_type == "anomaly":
             return self._engineer_anomaly_features(raw_features)
-        elif model_type == "threats":
+        elif model_type == "threat":
             return self._engineer_threat_features(raw_features)
         else:    # performance
             return self._engineer_performance_features(raw_features)
@@ -370,7 +372,7 @@ class MLModelServer:
         """Engineer features for anomaly detection"""
         feature_vector = []
 
-        # Basic packet fetures
+        # Basic packet features
         feature_vector.extend([
             features.get('packet_size', 0),
             features.get('inter_arrival_time', 0),
@@ -380,11 +382,11 @@ class MLModelServer:
             features.get('fragment_offset', 0),
         ])
 
-        # protocol encoding
+        # Protocol encoding
         protocol_map = {'TCP': 0, 'UDP': 1, 'ICMP': 2, 'OTHER': 3}
         feature_vector.append(protocol_map.get(features.get('protocol', 'OTHER'), 3))
 
-        # port analysis
+        # Port analysis
         src_port = features.get('src_port', 0)
         dst_port = features.get('dst_port', 0)
         feature_vector.extend([
@@ -393,15 +395,15 @@ class MLModelServer:
             1 if src_port == dst_port else 0,   # same port
         ])
 
-        # flags analysis
+        # Flags analysis
         flags = features.get('flags', [])
         flags_features = [1 if flag in flags else 0 for flag in ['SYN', 'ACK', 'FIN', 'RST', 'PSH', 'URG']]
         feature_vector.extend(flags_features)
 
-        #time-based features
+        # Time-based features
         hour = datetime.fromtimestamp(features.get('timestamp', time.time())).hour
         feature_vector.extend([
-            1 if 9 <= hour <= 17 else 0,     # business hour
+            1 if 9 <= hour <= 17 else 0,     # business hours
             1 if hour <= 6 or hour >= 22 else 0  # night hours
         ])
 
@@ -411,12 +413,12 @@ class MLModelServer:
         """Engineer features for threat detection"""
         feature_vector = []
 
-        # all anomaly fetures
+        # All anomaly features
         anomaly_features = self._engineer_anomaly_features(features).flatten()
         feature_vector.extend(anomaly_features)
 
-        # additional threat-specific features
-        # suspicious port combinations
+        # Additional threat-specific features
+        # Suspicious port combinations
         src_port = features.get('src_port', 0)
         dst_port = features.get('dst_port', 0) 
         suspicious_ports = [22, 23, 135, 139, 445, 1433, 3389, 5432]
@@ -427,7 +429,7 @@ class MLModelServer:
             1 if src_port > 49152 else 0,   # ephemeral port
         ])
 
-        # payload analysis
+        # Payload analysis
         payload_size = features.get('packet_size', 0) - 40     # minus headers
         feature_vector.extend([
             1 if payload_size > 1400 else 0,     # large payload
@@ -437,10 +439,10 @@ class MLModelServer:
         return np.array(feature_vector).reshape(1, -1)
     
     def _engineer_performance_features(self, features: Dict[str, Any]) -> np.ndarray:
-        """Engineer features for threat detection"""
+        """Engineer features for performance prediction"""
         feature_vector = []
 
-        # flow-based features
+        # Flow-based features
         if 'flow_features' in features:
             flow = features['flow_features']
             feature_vector.extend([
@@ -463,7 +465,7 @@ class MLModelServer:
             features.get('packet_size', 0),
         ])
 
-        #time-based features
+        # Time-based features
         hour = datetime.fromtimestamp(features.get('timestamp', time.time())).hour
         feature_vector.extend([
             hour / 24.0,     # normalized hour
@@ -474,33 +476,36 @@ class MLModelServer:
     
     async def predict_with_model(self, container: ModelContainer, features: np.ndarray, model_type: str) -> Tuple[Any, float]:
         """Make prediction with specific model"""
-
-        #scale features
+        # Scale features
         if hasattr(container.scaler, 'transform'):
             features_scaled = container.scaler.transform(features)
         else:
             features_scaled = features
 
-        #Make prediction
+        # Make prediction
         if model_type == "anomaly":
             prediction = container.model.predict(features_scaled)[0]
-            # for anomaly detection, confidence is the anomaly score
+            # For anomaly detection, confidence is the anomaly score
             if hasattr(container.model, 'decision_function'):
                 confidence = abs(container.model.decision_function(features_scaled)[0])
             else:
                 confidence = 0.5
         else:
             prediction = container.model.predict(features_scaled)[0]
-            # for classification, get prediction probabilities
+            # For classification, get prediction probabilities
             if hasattr(container.model, 'predict_proba'):
                 probabilities = container.model.predict_proba(features_scaled)[0]
                 confidence = max(probabilities)
             else:
                 confidence = 0.5
+        
         return prediction, confidence
 
     async def cache_prediction(self, request: PredictionRequest, prediction: Any, confidence: float):
-        """Cache prediction result in redis"""
+        """Cache prediction result in Redis"""
+        if self.redis_client is None:
+            return
+            
         try:
             cache_key = f"prediction:{request.model_type}:{hash(str(request.features))}" 
             cache_data = {
@@ -521,15 +526,15 @@ class MLModelServer:
     async def retrain_model_background(self, model_type: str):
         """Background task for model retraining"""
         try:
-            logger.info(f"Starting retrainig for {model_type} model")
+            logger.info(f"Starting retraining for {model_type} model")
 
-            # this would typically involve:
-            # 1. fetching new training data
-            # 2. retraining the model
-            # 3. evaluating performance
-            # 4. updating the model if performance improves
+            # This would typically involve:
+            # 1. Fetching new training data
+            # 2. Retraining the model
+            # 3. Evaluating performance
+            # 4. Updating the model if performance improves
 
-            # placeholder for actual retraining logic
+            # Placeholder for actual retraining logic
             await asyncio.sleep(10)     # simulate training time
             logger.info(f"Retraining completed for {model_type} model")
         
