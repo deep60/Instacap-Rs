@@ -1,12 +1,15 @@
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+import numpy.typing as npt
+
+from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier
+from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix
 import joblib
 import logging
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union, Any
 import json
 from datetime import datetime
 import warnings
@@ -24,10 +27,10 @@ class ThreatClassifier:
     
     def __init__(self, model_path: Optional[str] = None):
         self.logger = self._setup_logger()
-        self.scaler = StandardScaler()
-        self.label_encoder = LabelEncoder()
-        self.model = None
-        self.feature_names = []
+        self.scaler = Optional[StandardScaler] = StandardScaler()
+        self.label_encoder: LabelEncoder = LabelEncoder()
+        self.model = Optional[Union[VotingClassifier, RandomForestClassifier, BaseEstimator]] = None
+        self.feature_names: List[str] = []
         self.threat_categories = [
             'benign', 'malware', 'ddos', 'port_scan', 'intrusion', 
             'data_exfiltration', 'botnet', 'phishing', 'ransomware'
@@ -64,17 +67,17 @@ class ThreatClassifier:
             n_jobs=-1
         )
         
-        gb_classifier = GradientBoostingClassifier(
-            n_estimators=100,
-            max_depth=6,
-            random_state=42
-        )
+        # gb_classifier = GradientBoostingClassifier(
+        #     n_estimators=100,
+        #     max_depth=6,
+        #     random_state=42
+        # )
         
         # Ensemble voting classifier
         ensemble = VotingClassifier(
             estimators=[
                 ('rf', rf_classifier),
-                ('gb', gb_classifier)
+                # ('gb', gb_classifier)
             ],
             voting='soft'
         )
@@ -188,18 +191,17 @@ class ThreatClassifier:
         
         # Convert to numpy array with proper dtype and handle NaN/inf values
         features_array = np.array(features, dtype=np.float32)
-        
         # Handle NaN and infinite values
         features_array = np.nan_to_num(features_array, nan=0.0, posinf=0.0, neginf=0.0)
         
-        # Ensure all values are finite
-        if not np.all(np.isfinite(features_array)):
-            self.logger.warning("Non-finite values detected in features, replacing with 0")
-            features_array = np.where(np.isfinite(features_array), features_array, 0.0)
+        # # Ensure all values are finite
+        # if not np.all(np.isfinite(features_array)):
+        #     self.logger.warning("Non-finite values detected in features, replacing with 0")
+        #     features_array = np.where(np.isfinite(features_array), features_array, 0.0)
         
         return features_array
     
-    def prepare_training_data(self, dataset_path: str) -> Tuple[np.ndarray, np.ndarray]:
+    def prepare_training_data(self, dataset_path: str) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.int32]]:
         """
         Prepare training data from dataset
         Args:
@@ -334,7 +336,7 @@ class ThreatClassifier:
             self.logger.info(f"Threat categories: {self.label_encoder.classes_}")
             self.logger.info(f"Label distribution: {np.bincount(y_encoded)}")
             
-            return X_array, y_encoded
+            return X_array.astype(np.float32), y_encoded.astype(np.int32)
             
         except Exception as e:
             self.logger.error(f"Error preparing training data: {e}")
@@ -342,7 +344,7 @@ class ThreatClassifier:
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             raise
     
-    def train_model(self, X: np.ndarray, y: np.ndarray, test_size: float = 0.2):
+    def train_model(self, X: npt.NDArray[np.float32], y: npt.NDArray[np.int32], test_size: float = 0.2):
         """
         Train the threat classification model
         
@@ -424,7 +426,7 @@ class ThreatClassifier:
                 )
             
             # Initialize scaler if not already done
-            if not hasattr(self, 'scaler') or self.scaler is None:
+            if self.scaler is None:
                 self.scaler = StandardScaler()
             
             # Scale features
@@ -435,18 +437,21 @@ class ThreatClassifier:
                 
                 # Check for scaling issues
                 if not np.all(np.isfinite(X_train_scaled)) or not np.all(np.isfinite(X_test_scaled)):
-                    self.logger.warning("Scaling produced non-finite values, using robust scaler")
-                    from sklearn.preprocessing import RobustScaler
-                    self.scaler = RobustScaler()
-                    X_train_scaled = self.scaler.fit_transform(X_train)
-                    X_test_scaled = self.scaler.transform(X_test)
+                   raise ValueError("Scaling produced non-finite values")
                 
             except Exception as e:
                 self.logger.error(f"Error in feature scaling: {e}")
-                self.logger.warning("Using original unscaled features")
-                X_train_scaled = X_train
-                X_test_scaled = X_test
-                self.scaler = None
+                # Fallback to robust scaler
+                from sklearn.preprocessing import RobustScaler
+                self.scaler = RobustScaler()
+                try:
+                    X_train_scaled = self.scaler.fit_transform(X_train)
+                    X_test_scaled = self.scaler.transform(X_test)
+                except Exception as e:
+                    self.logger.warning(f"Robust scaling alos failed: {e}, using original features")
+                    X_train_scaled = X_train
+                    X_test_scaled = X_test
+                    self.scaler = None
             
             # Initialize model if not already done
             if not hasattr(self, 'model') or self.model is None:
@@ -543,24 +548,30 @@ class ThreatClassifier:
             features = features.reshape(1, -1)
             
             # Scale features
-            try:
-                features_scaled = self.scaler.transform(features)
-            except Exception as e:
-                self.logger.warning(f"Error scaling features: {e}, using original features")
+            if self.scaler is not None:
+                try:
+                    features_scaled = self.scaler.transform(features)
+                except Exception as e:
+                    self.logger.warning(f"Error scaling features: {e}, using original features")
+                    features_scaled = features
+            else:
                 features_scaled = features
+
+            if self.model is None:
+                raise ValueError("Model is None")
             
-            # Predict
-            prediction = self.model.predict(features_scaled)[0]
+            prediction_array = self.model.predict(features_scaled)
+            prediction = int(prediction_array[0]) if hasattr(prediction_array, '__getitem__') else int(prediction_array)
             
             # Get probabilities if available
+            probabilities = np.zeros(len(self.label_encoder.classes_))
             if hasattr(self.model, 'predict_proba'):
                 try:
                     probabilities = self.model.predict_proba(features_scaled)[0]
                 except:
-                    probabilities = np.zeros(len(self.label_encoder.classes_))
+                    self.logger.warning(f"Could not get probabilities: {e}")
                     probabilities[prediction] = 1.0
             else:
-                probabilities = np.zeros(len(self.label_encoder.classes_))
                 probabilities[prediction] = 1.0
             
             # Get threat category
@@ -748,14 +759,17 @@ class ThreatClassifier:
                 y_new = self.label_encoder.transform(new_labels)
             
             # Scale new features
-            try:
-                X_new_scaled = self.scaler.transform(X_new)
-            except Exception as e:
-                self.logger.warning(f"Error scaling new features: {e}")
+            if self.scaler is not None:
+                try:
+                    X_new_scaled = self.scaler.transform(X_new)
+                except Exception as e:
+                    self.logger.warning(f"Error scaling new features: {e}")
+                    X_new_scaled = X_new
+            else:
                 X_new_scaled = X_new
             
             # Update model (if supported)
-            if hasattr(self.model, 'partial_fit'):
+            if (hasattr(self.model, 'partial_fit') and callable(getattr(self.model, 'partial_fit', None))):
                 self.model.partial_fit(X_new_scaled, y_new)
                 self.logger.info(f"Model updated with {len(new_data)} new samples")
             else:
@@ -764,6 +778,29 @@ class ThreatClassifier:
         except Exception as e:
             self.logger.error(f"Error updating model: {e}")
             raise
+
+    def validate_model_state(classifier: ThreatClassifier) -> bool:
+        """Validate that classifier is in a valid state for prediction"""
+        if classifier.model is None:
+            return False
+        if classifier.label_encoder is None:
+            return False
+        if not hasattr(classifier.label_encoder, 'classes_'):
+            return False
+        return True
+    
+    def safe_predict(classifier: ThreatClassifier, packet_data: Dict) -> Dict:
+        """Safe wrapper for prediction that handles all edges cases"""
+        if not validate_model_state(classifier):
+            return {
+                'threat_category': 'unknown',
+                'confidence': 0.0,
+                'probabilities': {},
+                'timestamp': datetime.now().isoformat(),
+                'is_malicious': False,
+                'error': 'Model not in valid state'
+            }
+        return classifier.predict_threat(packet_data)
 
 # Example usage and testing
 if __name__ == "__main__":
