@@ -5,8 +5,10 @@ import numpy.typing as npt
 from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler, LabelEncoder, RobustScaler
+from typing import Union
 from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.base import ClassifierMixin
 import joblib
 import logging
 from typing import Dict, List, Tuple, Optional, Union, Any
@@ -27,9 +29,9 @@ class ThreatClassifier:
     
     def __init__(self, model_path: Optional[str] = None):
         self.logger = self._setup_logger()
-        self.scaler = Optional[StandardScaler] = StandardScaler()
+        self.scaler: Optional[StandardScaler] = StandardScaler()
         self.label_encoder: LabelEncoder = LabelEncoder()
-        self.model = Optional[Union[VotingClassifier, RandomForestClassifier, BaseEstimator]] = None
+        self.model: Optional[Union[VotingClassifier, RandomForestClassifier, BaseEstimator]] = None
         self.feature_names: List[str] = []
         self.threat_categories = [
             'benign', 'malware', 'ddos', 'port_scan', 'intrusion', 
@@ -443,7 +445,7 @@ class ThreatClassifier:
                 self.logger.error(f"Error in feature scaling: {e}")
                 # Fallback to robust scaler
                 from sklearn.preprocessing import RobustScaler
-                self.scaler = RobustScaler()
+                self.scaler: Optional[Union[StandardScaler, RobustScaler]] = RobustScaler()
                 try:
                     X_train_scaled = self.scaler.fit_transform(X_train)
                     X_test_scaled = self.scaler.transform(X_test)
@@ -561,7 +563,7 @@ class ThreatClassifier:
                 raise ValueError("Model is None")
             
             prediction_array = self.model.predict(features_scaled)
-            prediction = int(prediction_array[0]) if hasattr(prediction_array, '__getitem__') else int(prediction_array)
+            prediction = int(prediction_array[0])
             
             # Get probabilities if available
             probabilities = np.zeros(len(self.label_encoder.classes_))
@@ -769,7 +771,7 @@ class ThreatClassifier:
                 X_new_scaled = X_new
             
             # Update model (if supported)
-            if (hasattr(self.model, 'partial_fit') and callable(getattr(self.model, 'partial_fit', None))):
+            if hasattr(self.model, 'partial_fit'):
                 self.model.partial_fit(X_new_scaled, y_new)
                 self.logger.info(f"Model updated with {len(new_data)} new samples")
             else:
@@ -779,6 +781,7 @@ class ThreatClassifier:
             self.logger.error(f"Error updating model: {e}")
             raise
 
+    @staticmethod
     def validate_model_state(classifier: ThreatClassifier) -> bool:
         """Validate that classifier is in a valid state for prediction"""
         if classifier.model is None:
@@ -789,6 +792,7 @@ class ThreatClassifier:
             return False
         return True
     
+    @staticmethod
     def safe_predict(classifier: ThreatClassifier, packet_data: Dict) -> Dict:
         """Safe wrapper for prediction that handles all edges cases"""
         if not validate_model_state(classifier):
