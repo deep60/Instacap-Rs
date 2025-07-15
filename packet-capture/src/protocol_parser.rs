@@ -493,7 +493,7 @@ impl ProtocolParser {
             }
             if let Some(colon_pos) = line.find(':') {
                 let key = line[..colon_pos].trim().to_lowercase();
-                let value = line[colon_pos + 1..].trim().to_string();;
+                let value = line[colon_pos + 1..].trim().to_string();
                 headers.insert(key, value);
             }
         }

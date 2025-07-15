@@ -127,7 +127,7 @@ impl PerformanceTracker {
         drop(buffer);
 
         // Calculate latency, jitter
-        let (latency, jitter) = Self::calculate_latency_and_jitter(&packets);
+        let (latency, jitter) = self.calculate_latency_and_jitter(&packets);
 
         // Calculate throughput
         let throughput = self.calculate_throughput(&packets);
@@ -149,7 +149,7 @@ impl PerformanceTracker {
             latency_ms: latency,
             jitter_ms: jitter,
             packet_loss_percent: packet_loss,
-            throughput_kbps: throughput,
+            throughput_mbps: throughput,
             packet_per_second: pps,
             bandwidth_utilization_percent: bandwidth_util,
             connection_count: connections.len() as u32,
@@ -181,7 +181,7 @@ impl PerformanceTracker {
 
         // Calculate jitter (average deviation from mean)
         // uage sample variance formula (n-1 denominator)
-        let jitter = if rtts.len > 1 {
+        let jitter = if rtts.len() > 1 {
             let variance: f64 = rtts.iter()
                 .map(|rtt| (rtt - avg_latency).powi(2))
                 .sum::<f64>() / (rtts.len() - 1) as f64;
@@ -198,7 +198,7 @@ impl PerformanceTracker {
             return 0.0; // No packets to calculate throughput
         }
 
-        let total_bytes: usize = packets.iter().map(|p| p.size);
+        let total_bytes: usize = packets.iter().map(|p| p.size).sum();
         let time_window = packets
             .last()
             .unwrap()
@@ -350,8 +350,8 @@ impl PerformanceTracker {
 
         PerformanceSummary {
             avg_latency: latencies.iter().sum::<f64>() / latencies.len() as f64,
-            max_latency: *latencies.iter().fold(0.0, |a, &b| a.max(b)),
-            min_latency: *latencies.iter().fold(f64::INFINITY, |a, &b| a.min(b)),
+            max_latency: latencies.iter().fold(0.0, |a, &b| a.max(b)),
+            min_latency: latencies.iter().fold(f64::INFINITY, |a, &b| a.min(b)),
             avg_throughput: throughputs.iter().sum::<f64>() / throughputs.len() as f64,
             max_throughput: throughputs.iter().fold(0.0, |a, &b| a.max(b)),
             avg_packet_loss: packet_losses.iter().sum::<f64>() / packet_losses.len() as f64,
@@ -385,8 +385,8 @@ impl Default for PerformanceSummary {
             max_throughput: 0.0,
             avg_packet_loss: 0.0,
             max_packet_loss: 0.0,
-            uptime_seconds: 0.0,
-            total_connections: 0.0,
+            uptime_seconds: 0,
+            total_connections: 0,
         }
     }
 }

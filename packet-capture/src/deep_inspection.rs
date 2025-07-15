@@ -2,7 +2,7 @@ use crate::packet_capture::PacketInfo;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 use std::collections::HashMap;
-use anyhow::Results;
+use anyhow::Result;
 use log::{info, warn};
 use chrono::{DateTime, Utc};
 
@@ -66,7 +66,7 @@ pub struct ThreatIndicator {
     pub confidence: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceMetrics {
     pub latency_ms: Option<f64>,
     pub jitter_ms: Option<f64>,
@@ -222,6 +222,7 @@ impl DeepInspector {
                     // Try to detect protocol by payload inspection
                     details.application_protocols = self.detect_protocol_by_payload(&packet.payload);
                 }
+                _ => {}
             }
         }
 
@@ -368,7 +369,7 @@ impl DeepInspector {
         };
 
         // TLS version
-        let content_type = payload[0];
+        let _content_type = payload[0];
         let version = u16::from_be_bytes([payload[1], payload[2]]);
         details.version = Some(match version {
             0x0301 => "TLS 1.0".to_string(),
@@ -463,7 +464,7 @@ impl DeepInspector {
     fn calculate_anomaly_score(&self, packet: &PacketInfo) -> f64 {
         // Placeholder for anomaly score calculation
         // This could be based on packet size, frequency, etc.
-        let mut score = 0.0;
+        let mut score: f64 = 0.0;
 
         // Check packet size anomalies
         if packet.payload.len() > 1500 {
@@ -476,13 +477,13 @@ impl DeepInspector {
 
         // Check for suspicious patterns in payload
         let suspicious_patterns = [
-            b"cmd.exe",
-            b"powershell",
-            b"/bin/sh",
-            b"SELECT * FROM",
-            b"UNION SELECT",
-            b"<script>",
-            b"javacript:",
+            "cmd.exe".as_bytes(),
+            "powershell".as_bytes(),
+            "/bin/sh".as_bytes(),
+            "SELECT * FROM".as_bytes(),
+            "UNION SELECT".as_bytes(),
+            "<script>".as_bytes(),
+            "javacript:".as_bytes(),
         ];
 
         for pattern in & suspicious_patterns {
@@ -562,8 +563,8 @@ impl DeepInspector {
     }
 
     fn update_flow_state(&mut self, analyzed: &AnalyzedPacket) {
-        if let (Some(src_ip), Some(dst_ip)) = (&analyzed.packet.src_ip, &analyzed.packet.dst_ip) {
-            let flow_key = format!("{}:{}", src_ip, dst_ip);
+        if let Some(network_info) = &analyzed.packet.network {
+            let flow_key = format!("{}:{}", network_info.src_ip, network_info.dst_ip);
             let now = Utc::now();
             let flow = self.flow_tracker.entry(flow_key.clone()).or_insert(FlowState {
                 first_seen: now,
@@ -612,7 +613,7 @@ impl DeepInspector {
             },
             ThreatPattern {
                 name: "PowerShell".to_string(),
-                pattern: b"powershell".to_vec(),
+                pattern: "powershell".as_bytes().to_vec(),
                 severity: "Medium".to_string(),
                 description: "PowerShell execution detected".to_string(),
             },
@@ -637,7 +638,3 @@ impl Clone for DeepInspector {
     }
 }
 
-/// Pattern Matching: Detects known attack signatures
-/// Anomaly Detection: Identifies unusual packet sizes or behaviors
-/// Protocol Analysis: Deep inspection of HTTP, DNS, TLS protocols
-/// Threat Classification: Categorizes threats by severity (Low/High/Critical)

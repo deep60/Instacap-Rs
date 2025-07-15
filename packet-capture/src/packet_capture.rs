@@ -5,10 +5,8 @@ use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
-use pnet::packet::icmp::IcmpPacket;
 use pnet::packet::Packet;
 use serde::{Serialize, Deserialize};
-use std::net::{Ipv4Addr, Ipv6Addr};
 use tokio::sync::mpsc::Sender;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -135,14 +133,14 @@ impl PacketCapturer {
         let ethernet_packet = EthernetPacket::new(data).ok_or_else(|| anyhow::anyhow!("Invalid Ethernet packet"))?;
 
         let ethernet_info = EthernetInfo {
-src_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-    ethernet_packet.get_source()[0], ethernet_packet.get_source()[1],
-    ethernet_packet.get_source()[2], ethernet_packet.get_source()[3],
-    ethernet_packet.get_source()[4], ethernet_packet.get_source()[5]),
-dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-    ethernet_packet.get_destination()[0], ethernet_packet.get_destination()[1],
-    ethernet_packet.get_destination()[2], ethernet_packet.get_destination()[3],
-    ethernet_packet.get_destination()[4], ethernet_packet.get_destination()[5]),
+            src_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                ethernet_packet.get_source().octets()[0], ethernet_packet.get_source().octets()[1],
+                ethernet_packet.get_source().octets()[2], ethernet_packet.get_source().octets()[3],
+                ethernet_packet.get_source().octets()[4], ethernet_packet.get_source().octets()[5]),
+            dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                ethernet_packet.get_destination().octets()[0], ethernet_packet.get_destination().octets()[1],
+                ethernet_packet.get_destination().octets()[2], ethernet_packet.get_destination().octets()[3],
+                ethernet_packet.get_destination().octets()[4], ethernet_packet.get_destination().octets()[5]),
             ethertype: format!("{:?}", ethernet_packet.get_ethertype()),
         };
 
@@ -154,16 +152,7 @@ dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
 
         // Generate flow ID for connection tracking
         let flow_id = self.generate_flow_id(&network_info, &transport_info);
-    }
-    
-    fn generate_flow_id(&self, network_info: &Option<NetworkInfo>, transport_info: &Option<TransportInfo>) -> String {
-        match (network_info, transport_info) {
-            (Some(net), Some(trans)) => {
-                format!("{}->{}", net.src_ip, net.dst_ip)
-            }
-            _ => uuid::Uuid::new_v4().to_string(),
-        }
-
+        
         Ok(PacketInfo {
             timestamp: ts,
             packet_id,
@@ -175,6 +164,15 @@ dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
             payload,
             flow_id,
         })
+    }
+    
+    fn generate_flow_id(&self, network_info: &Option<NetworkInfo>, transport_info: &Option<TransportInfo>) -> String {
+        match (network_info, transport_info) {
+            (Some(net), Some(trans)) => {
+                format!("{}:{}->{}", net.src_ip, trans.src_port, net.dst_ip)
+            }
+            _ => uuid::Uuid::new_v4().to_string(),
+        }
     }
 
     fn parse_ipv4(&self, data: &[u8]) -> Result<(Option<NetworkInfo>, Option<TransportInfo>, Vec<u8>)> {
@@ -189,10 +187,10 @@ dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
             fragment_offset: Some(ipv4_packet.get_fragment_offset()),
         };
 
-        let (transport_info, payload) = match ipv4_packet.get_next_level_protocol() {
+        let (_, transport_info, payload) = match ipv4_packet.get_next_level_protocol() {
             IpNextHeaderProtocols::Tcp => self.parse_tcp(ipv4_packet.payload())?,
             IpNextHeaderProtocols::Udp => self.parse_udp(ipv4_packet.payload())?,
-            IpNextHeaderProtocols::Icmp => (Some(TransportInfo {
+            IpNextHeaderProtocols::Icmp => (None, Some(TransportInfo {
                 protocol: "ICMP".to_string(),
                 src_port: 0,
                 dst_port: 0,
@@ -201,6 +199,7 @@ dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                 sequence: None,
                 acknowledgement: None,
             }), ipv4_packet.payload().to_vec()),
+            _ => (None, None, ipv4_packet.payload().to_vec()),
         };
 
         Ok((Some(network_info), transport_info, payload))
@@ -212,16 +211,16 @@ dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
         let network_info = NetworkInfo {
             protocol: "IPv6".to_string(),
             src_ip: ipv6_packet.get_source().to_string(),
-            dst_ip: ipv6_packet.get_destination().get_string(),
-            ttl: Some(ipv6_packet.get_ttl()),
+            dst_ip: ipv6_packet.get_destination().to_string(),
+            ttl: Some(ipv6_packet.get_hop_limit()),
             flags: None,
             fragment_offset: None,
         };
 
-        let (transport_info, payload) = match ipv6_packet.get_next_level_header() {
-            IpNextHeaderProtocols::Tcp => self.parse_tcp(ipv4_packet.payload())?,
-            IpNextHeaderProtocols::Udp => self.parse_udp(ipv4_packet.payload())?,
-            IpNextHeaderProtocols::Icmp => (Some(TransportInfo {
+        let (_, transport_info, payload) = match ipv6_packet.get_next_header() {
+            IpNextHeaderProtocols::Tcp => self.parse_tcp(ipv6_packet.payload())?,
+            IpNextHeaderProtocols::Udp => self.parse_udp(ipv6_packet.payload())?,
+            IpNextHeaderProtocols::Icmp => (None, Some(TransportInfo {
                 protocol: "ICMP".to_string(),
                 src_port: 0,
                 dst_port: 0,
@@ -229,7 +228,8 @@ dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                 window_size: None,
                 sequence: None,
                 acknowledgement: None,
-            }), ipv4_packet.payload().to_vec()),
+            }), ipv6_packet.payload().to_vec()),
+            _ => (None, None, ipv6_packet.payload().to_vec()),
         };
 
         Ok((Some(network_info), transport_info, payload))
@@ -242,13 +242,13 @@ dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
             protocol: "TCP".to_string(),
             src_port: tcp_packet.get_source(),
             dst_port: tcp_packet.get_destination(),
-            flags: Some(tcp_packet.get_flags()),
+            flags: Some(tcp_packet.get_flags().into()),
             window_size: Some(tcp_packet.get_window()),
             sequence: Some(tcp_packet.get_sequence()),
             acknowledgement: Some(tcp_packet.get_acknowledgement()),
         };
 
-        Ok((Some(transport_info), tcp_packet.payload().to_vec()))
+        Ok((None, Some(transport_info), tcp_packet.payload().to_vec()))
     }
 
     fn parse_udp(&self, data: &[u8]) -> Result<(Option<NetworkInfo>, Option<TransportInfo>, Vec<u8>)> {
@@ -256,7 +256,7 @@ dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
 
         let transport_info = TransportInfo {
             protocol: "UDP".to_string(),
-            src_port: udp_packet.to_string(),
+            src_port: udp_packet.get_source(),
             dst_port: udp_packet.get_destination(),
             flags: None,
             window_size: None,
@@ -264,19 +264,7 @@ dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
             acknowledgement: None,
         };
 
-        Ok((Some(transport_info), udp_packet.payload().to_vec()))
+        Ok((None, Some(transport_info), udp_packet.payload().to_vec()))
     }
 
-    fn generate_flow_id(&self, network: &Option<NetworkInfo>, transport: &Option<TransportInfo>) -> String {
-        match (network, transport) {
-            (Some(net), Some(trans)) => {
-                format!("{}:{}->{}:{}", net.src_ip, trans.src_port, net.dst_ip, trans.dst_port)
-            }
-            (Some(net), None) => {
-                format!("{}->{}:{}", net.src_ip, trans.src_port, net.dst_ip, net.protocol)
-            }
-
-            _ => uuid::Uuid::new_v4().to_string(),
-        }
-    }
 }
