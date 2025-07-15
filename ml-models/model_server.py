@@ -279,25 +279,18 @@ class MLModelServer:
         """Load a default model when specific model fails"""
         logger.info(f"Loading default {model_type} model")
         
-        # if model_type == "anomaly":
-        #     model = IsolationForest(contamination=0.1, random_state=42)
-        # elif model_type == "threat":
-        #     model = RandomForestClassifier(n_estimators=100, random_state=42)
-        # else:  # performance
-        #     model = RandomForestClassifier(n_estimators=50, random_state=42)
-
         if model_type == "anomaly":
             feature_count = 18
             model = IsolationForest(contamination=0.1, random_state=42)
         elif model_type == "threat":
             feature_count = 21
-            # model = RandomForestClassifier(n_estimators=100, random_state=42)
-        else:
+            #model = RandomForestClassifier(n_estimators=100, random_state=42)
+        else:  # performance
             feature_count = 13
             # model = RandomForestClassifier(n_estimators=50, random_state=42)
 
         # Create dummy training data for default model
-        X_dummy = np.random.rand(1000, feature_count)
+        X_dummy = np.random.rand(1000, 20)
         y_dummy = np.random.randint(0, 2, 1000)
         
         scaler = StandardScaler()
@@ -310,7 +303,7 @@ class MLModelServer:
             # Classification models need both X and y
             model.fit(X_scaled, y_dummy)
 
-        feature_names = [f"feature_{i}" for i in range(feature_count)]
+        feature_names = [f"feature_{i}" for i in range(20)]
         
         container = ModelContainer(
             model=model,
