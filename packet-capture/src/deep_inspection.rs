@@ -528,7 +528,7 @@ impl DeepInspector {
             });
         }
 
-        if payload_str.to_lowercas()e.contains("union select") || payload_str.to_lowercase().contains("' or 1=1") {
+        if payload_str.to_lowercase().contains("union select") || payload_str.to_lowercase().contains("' or 1=1") {
             threats.push(ThreatIndicator {
                 indicator_type: "SQL Injection".to_string(),
                 severity: "Critical".to_string(),
