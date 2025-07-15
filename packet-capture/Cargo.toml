@@ -54,6 +54,7 @@ socket2 = "0.5"
 # System interfaces
 nix = "0.27"
 libc = "0.2"
+uuid = { version = "1.17.0", features = ["v4", "serde"] }
 
 [dev-dependencies]
 mockall = "0.11"

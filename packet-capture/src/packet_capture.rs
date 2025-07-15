@@ -1,17 +1,18 @@
 use pcap::{Capture, Device, Precision};
-use pnet::packet::ethernet::{EtherType, EthernetPacket};
+use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::{IpNextHeaderProtocols};
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
 use pnet::packet::icmp::IcmpPacket;
+use pnet::packet::Packet;
 use serde::{Serialize, Deserialize};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use tokio::sync::mpsc::Sender;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use log::{info, error, warn};
+use log::{info, error};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PacketInfo {
@@ -19,7 +20,7 @@ pub struct PacketInfo {
     pub packet_id: String,
     pub interface: String,
     pub length: usize,
-    pub ethernet: EthernetPacket,
+    pub ethernet: EthernetInfo,
     pub network: Option<NetworkInfo>,
     pub transport: Option<TransportInfo>,
     pub payload: Vec<u8>,
@@ -93,7 +94,7 @@ impl PacketCapturer {
 
         // Apply BPF filter if specified
         if !self.config.filter.is_empty() {
-            cap.filter(self.config.filter, true)?;
+            cap.filter(&self.config.filter, true)?;
         }
 
         // Start the capture loop
@@ -134,30 +135,39 @@ impl PacketCapturer {
         let ethernet_packet = EthernetPacket::new(data).ok_or_else(|| anyhow::anyhow!("Invalid Ethernet packet"))?;
 
         let ethernet_info = EthernetInfo {
-            src_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                ethernet_packet.get_source().0[0], ethernet_packet.get_source().0[1],
-                ethernet_packet.get_source().0[2], ethernet_packet.get_source().0[3],
-                ethernet_packet.get_source().0[4], ethernet_packet.get_source().0[5]),
-            dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                ethernet_packet.get_destination().0[0], ethernet_packet.get_destination().0[1],
-                ethernet_packet.get_destination().0[2], ethernet_packet.get_destination().0[3],
-                ethernet_packet.get_destination().0[4], ethernet_packet.get_destination().0[5]),
+src_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+    ethernet_packet.get_source()[0], ethernet_packet.get_source()[1],
+    ethernet_packet.get_source()[2], ethernet_packet.get_source()[3],
+    ethernet_packet.get_source()[4], ethernet_packet.get_source()[5]),
+dst_mac: format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+    ethernet_packet.get_destination()[0], ethernet_packet.get_destination()[1],
+    ethernet_packet.get_destination()[2], ethernet_packet.get_destination()[3],
+    ethernet_packet.get_destination()[4], ethernet_packet.get_destination()[5]),
             ethertype: format!("{:?}", ethernet_packet.get_ethertype()),
         };
 
         let (network_info, transport_info, payload) = match ethernet_packet.get_ethertype() {
-            EtherType::Ipv4 => self.parse_ipv4(ethernet_packet.payload())?,
-            EtherType::Ipv6 => self.parse_ipv6(ethernet_packet.payload())?,
+            EtherTypes::Ipv4 => self.parse_ipv4(ethernet_packet.payload())?,
+            EtherTypes::Ipv6 => self.parse_ipv6(ethernet_packet.payload())?,
             _ => (None, None, ethernet_packet.payload().to_vec()),
         };
 
         // Generate flow ID for connection tracking
         let flow_id = self.generate_flow_id(&network_info, &transport_info);
+    }
+    
+    fn generate_flow_id(&self, network_info: &Option<NetworkInfo>, transport_info: &Option<TransportInfo>) -> String {
+        match (network_info, transport_info) {
+            (Some(net), Some(trans)) => {
+                format!("{}->{}", net.src_ip, net.dst_ip)
+            }
+            _ => uuid::Uuid::new_v4().to_string(),
+        }
 
         Ok(PacketInfo {
             timestamp: ts,
             packet_id,
-            interface: self.config.inteface.clone(),
+            interface: self.config.interface.clone(),
             length: data.len(),
             ethernet: ethernet_info,
             network: network_info,
@@ -173,9 +183,9 @@ impl PacketCapturer {
         let network_info = NetworkInfo {
             protocol: "IPv4".to_string(),
             src_ip: ipv4_packet.get_source().to_string(),
-            dst_ip: ipv4_packet.get_source().get_string(),
+            dst_ip: ipv4_packet.get_destination().to_string(),
             ttl: Some(ipv4_packet.get_ttl()),
-            flags: Some(ipv4_packet.get_flags()),
+            flags: Some(ipv4_packet.get_flags().into()),
             fragment_offset: Some(ipv4_packet.get_fragment_offset()),
         };
 

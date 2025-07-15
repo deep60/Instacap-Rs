@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr};
 use serde::{Deserialize, Serialize};
+use crate::packet_capture;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ParsedPacket {
@@ -21,13 +22,13 @@ pub struct EthernetHeader {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct IpHeader {
-    V4(Ipv4Addr),
-    V6(Ipv6Addr),
+pub enum IpHeader {
+    V4(Ipv4Header),
+    V6(Ipv6Header),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Ipv4Addr {
+pub struct Ipv4Header {
     pub version: u8,
     pub header_length: u8,
     pub tos: u8,
@@ -43,7 +44,7 @@ pub struct Ipv4Addr {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Ipv6Addr {
+pub struct Ipv6Header {
     pub version: u8,
     pub traffic_class: u8,
     pub flow_label: u32,
@@ -182,12 +183,48 @@ pub struct ParserStats {
     pub malformed_packets: u64,
 }
 
+impl Default for ParserStats {
+    fn default() -> Self {
+        Self {
+            packet_parsed: 0,
+            ipv4_packets: 0,
+            ipv6_packets: 0,
+            tcp_packets: 0,
+            udp_packets: 0,
+            icmp_packets: 0,
+            http_packets: 0,
+            dns_packets: 0,
+            ftp_packets: 0,
+            smtp_packets: 0,
+            malformed_packets: 0,
+        }
+    }
+}
+
 impl ProtocolParser {
     pub fn new() -> Self {
         Self {
             stats: ParserStats::default(),
         }
     }
+    pub async fn analyze_stream(&mut self, mut packet_rx: tokio::sync::mpsc::Receiver<packet_capture::PacketInfo>, tx: tokio::sync::mpsc::Sender<ParsedPacket>) -> Result<(), String> {
+        while let Some(packet) = packet_rx.recv().await {
+            match self.parse_packet(&packet.payload, packet.timestamp.timestamp() as u64) {
+                Ok(parsed) => {
+                    if let Err(e) = tx.send(parsed).await {
+                        return Err(format!("Failed to send parsed packet: {}", e));
+                    }
+                },
+                Err(e) => {
+                    // Log error but continue processing
+                    eprintln!("Error parsing packet: {}", e);
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
     pub fn parse_packet(&mut self, packet_data: &[u8], timestamp: u64) -> Result<ParsedPacket, String> {
         if packet_data.len() < 14 {
             self.stats.malformed_packets += 1;
@@ -227,7 +264,7 @@ impl ProtocolParser {
                 },
                 IpHeader::V6(ipv6) => {
                     offset += 40;
-                    self.parse_transport_layer(&packet_data[offset..], &ipv6.next_header, offset)?
+                    self.parse_transport_layer(&packet_data[offset..], ipv6.next_header, offset)?
                 },
             }
         } else {
@@ -235,7 +272,7 @@ impl ProtocolParser {
         };
 
         let application = if payload_offset < packet_data.len() {
-            self.parse_application_layer(&packet_data[payload_offset..], transport_header)?
+            self.parse_application_layer(&packet_data[payload_offset..], &transport)?
         } else {
             None
         };
@@ -261,11 +298,11 @@ impl ProtocolParser {
         })
     }
 
-    fn parse_ipv4_header(&self, data: &[u8]) -> Result<Ipv4Addr, String> {
+    fn parse_ipv4_header(&self, data: &[u8]) -> Result<Ipv4Header, String> {
         if data.len() < 20 {
             return Err("Packet too small for IPv4 header".to_string());
         }
-        Ok(Ipv4Addr {
+        Ok(Ipv4Header {
             version: (data[0] & 0x0F) >> 4,
             header_length: data[0] & 0x0F,
             tos: data[1],
@@ -281,10 +318,10 @@ impl ProtocolParser {
         })
     }
 
-    fn parse_ipv6_header(&self, data: &[u8]) -> Result<Ipv6Addr, String> {
+    fn parse_ipv6_header(&self, data: &[u8]) -> Result<Ipv6Header, String> {
         let version_traffic_flow = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
 
-        Ok(Ipv6Addr {
+        Ok(Ipv6Header {
             version: ((version_traffic_flow & 0xF0000000) >> 28) as u8,
             traffic_class: ((version_traffic_flow & 0x0FF00000) >> 20) as u8,
             flow_label: version_traffic_flow & 0x000FFFFF,
@@ -329,7 +366,7 @@ impl ProtocolParser {
             17 => { 
                 // UDP
                 if data.len() < 8 {
-                    return Ok((None, base_offset + data.len())));
+                    return Ok((None, base_offset + data.len()));
                 }
                 self.stats.udp_packets += 1;
                 let udp_header = self.parse_udp_header(&data[0..8])?;
@@ -337,7 +374,7 @@ impl ProtocolParser {
             },
             1 => { // ICMP
                 if data.len() < 8 {
-                    return Ok((None, base_offset + data.len())));
+                    return Ok((None, base_offset + data.len()));
                 }
                 self.stats.icmp_packets += 1;
                 let icmp_header = self.parse_icmp_header(&data[0..8])?;
@@ -464,7 +501,7 @@ impl ProtocolParser {
         let is_request = first_line.starts_with("GET") || first_line.starts_with("POST") || 
                          first_line.starts_with("PUT") || first_line.starts_with("DELETE") || 
                          first_line.starts_with("HEAD") || first_line.starts_with("OPTIONS");
-        let (method, url, version) = if is_request {
+        let (method, url, version, status_code) = if is_request {
             let parts: Vec<&str> = first_line.split_whitespace().collect();
             if parts.len() >= 3 {
                 (Some(parts[0].to_string()), Some(parts[1].to_string()), Some(parts[2].to_string()), None)
@@ -474,11 +511,11 @@ impl ProtocolParser {
         } else {
             // HTTP response
             let parts: Vec<&str> = first_line.split_whitespace().collect();
-            if parts.len() < 2 {
+            if parts.len() >= 2 {
                 let status = parts[1].parse::<u16>().ok();
                 (None, None, Some(parts[0].to_string()), status)
             } else {
-                (None, None, Some(parts[0].to_string()))
+                (None, None, Some(parts[0].to_string()), None)
             }
         };
 

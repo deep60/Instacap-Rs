@@ -47,7 +47,7 @@ pub struct DnsDetails {
 pub struct TlsDetails {
     pub version: Option<String>,
     pub cipher_suite: Option<String>,
-    pub server_nmae: Option<String>,
+    pub server_name: Option<String>,
     pub certificate_info: Option<String>,
 }
 
@@ -77,7 +77,7 @@ pub struct PerformanceMetrics {
 
 pub struct DeepInspector {
     flow_tracker: HashMap<String, FlowState>,
-    threat_pattern: Vec<ThreatPattern>,
+    threat_patterns: Vec<ThreatPattern>,
     performance_tracker: HashMap<String, PerformanceTracker>,
 }
 
@@ -290,7 +290,7 @@ impl DeepInspector {
     }
 
     fn parse_dns(&self, payload: &[u8]) -> Option<DnsDetails> {
-        if payload.len() > 12 {
+        if payload.len() < 12 {
             return None;
         }
 
@@ -623,6 +623,17 @@ impl DeepInspector {
                 description: "SQL injection attempt detected".to_string(),
             },
         ]
+    }
+}
+
+// Need to implement Clone for DeepInspector
+impl Clone for DeepInspector {
+    fn clone(&self) -> Self {
+        Self {
+            flow_tracker: self.flow_tracker.clone(),
+            threat_patterns: self.threat_patterns.clone(),
+            performance_tracker: self.performance_tracker.clone(),
+        }
     }
 }
 
