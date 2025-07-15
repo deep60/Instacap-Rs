@@ -1,0 +1,308 @@
+# Anomaly Detection: Traffic spikes, protocol anomalies, connection patterns
+# Threat Detection: Port scanning, DDoS attacks, malware C&C, intrusion attempts
+# Performance Monitoring: Latency, packet loss, throughput monitoring
+# Protocol-Specific Rules: HTTP, DNS, FTP monitoring
+# IP/Geolocation Rules: Blacklists and geographic filtering
+# Time-based Rules: After-hours activity detection
+# ML Integration: Machine learning model endpoints for advanced detection
+# Alert Configuration: Multiple notification channels and escalation policies
+
+# Network Packet Analysis Detection Rules Configuration
+# This file defines rules for anomaly detection, threat detection, and performance monitoring
+
+version: "1.0"
+last_updated: "2025-01-15"
+
+# Global detection settings
+global:
+  enabled: true
+  log_level: "info"
+  alert_threshold: "medium"
+  time_window: "5m"
+  max_alerts_per_minute: 100
+
+# Anomaly Detection Rules
+anomaly_detection:
+  traffic_spikes:
+    - name: "sudden_traffic_increase"
+      description: "Detect sudden spikes in network traffic"
+      enabled: true
+      threshold: 300  # percentage increase
+      time_window: "2m"
+      severity: "high"
+      action: "alert"
+      
+    - name: "bandwidth_anomaly"
+      description: "Unusual bandwidth consumption patterns"
+      enabled: true
+      threshold: 500  # MB/s
+      time_window: "1m"
+      severity: "medium"
+      action: "log"
+
+  protocol_anomalies:
+    - name: "unauthorized_protocol"
+      description: "Detection of unauthorized network protocols"
+      enabled: true
+      allowed_protocols: ["HTTP", "HTTPS", "DNS", "DHCP", "ICMP", "SSH", "FTP"]
+      severity: "high"
+      action: "block"
+      
+    - name: "protocol_distribution_anomaly"
+      description: "Unusual protocol distribution patterns"
+      enabled: true
+      baseline_window: "24h"
+      deviation_threshold: 50  # percentage
+      severity: "medium"
+      action: "alert"
+
+  connection_anomalies:
+    - name: "excessive_connections"
+      description: "Too many simultaneous connections from single source"
+      enabled: true
+      max_connections: 1000
+      time_window: "5m"
+      severity: "high"
+      action: "rate_limit"
+      
+    - name: "connection_frequency_anomaly"
+      description: "Unusual connection establishment patterns"
+      enabled: true
+      max_connections_per_second: 50
+      severity: "medium"
+      action: "alert"
+
+# Threat Detection Rules
+threat_detection:
+  port_scanning:
+    - name: "horizontal_port_scan"
+      description: "Detect horizontal port scanning activity"
+      enabled: true
+      unique_ports_threshold: 25
+      time_window: "10s"
+      severity: "high"
+      action: "block"
+      
+    - name: "vertical_port_scan"
+      description: "Detect vertical port scanning activity"
+      enabled: true
+      unique_targets_threshold: 50
+      time_window: "30s"
+      severity: "high"
+      action: "block"
+
+  ddos_detection:
+    - name: "volumetric_ddos"
+      description: "Detect volumetric DDoS attacks"
+      enabled: true
+      packets_per_second_threshold: 10000
+      bytes_per_second_threshold: "100MB"
+      time_window: "10s"
+      severity: "critical"
+      action: "block"
+      
+    - name: "syn_flood"
+      description: "Detect SYN flood attacks"
+      enabled: true
+      syn_packets_threshold: 1000
+      time_window: "5s"
+      severity: "high"
+      action: "rate_limit"
+
+  malware_detection:
+    - name: "command_and_control"
+      description: "Detect C&C communication patterns"
+      enabled: true
+      suspicious_domains: ["*.tk", "*.ml", "*.ga"]
+      beacon_interval_threshold: "60s"
+      severity: "critical"
+      action: "block"
+      
+    - name: "data_exfiltration"
+      description: "Detect potential data exfiltration"
+      enabled: true
+      upload_threshold: "50MB"
+      time_window: "1m"
+      unusual_destinations: true
+      severity: "high"
+      action: "alert"
+
+  intrusion_detection:
+    - name: "brute_force_attack"
+      description: "Detect brute force login attempts"
+      enabled: true
+      failed_attempts_threshold: 10
+      time_window: "5m"
+      target_ports: [22, 21, 23, 3389, 80, 443]
+      severity: "high"
+      action: "block"
+      
+    - name: "privilege_escalation"
+      description: "Detect privilege escalation attempts"
+      enabled: true
+      suspicious_commands: ["sudo", "su", "passwd", "chmod"]
+      severity: "high"
+      action: "alert"
+
+# Performance Monitoring Rules
+performance_monitoring:
+  latency_monitoring:
+    - name: "high_latency"
+      description: "Monitor for high network latency"
+      enabled: true
+      threshold: "200ms"
+      severity: "medium"
+      action: "alert"
+      
+    - name: "jitter_detection"
+      description: "Detect network jitter issues"
+      enabled: true
+      threshold: "50ms"
+      severity: "low"
+      action: "log"
+
+  packet_loss_monitoring:
+    - name: "packet_loss_detection"
+      description: "Monitor for packet loss"
+      enabled: true
+      threshold: 1  # percentage
+      time_window: "1m"
+      severity: "medium"
+      action: "alert"
+
+  throughput_monitoring:
+    - name: "low_throughput"
+      description: "Detect degraded network throughput"
+      enabled: true
+      threshold: "10MB/s"  # minimum expected throughput
+      severity: "low"
+      action: "log"
+      
+    - name: "throughput_degradation"
+      description: "Monitor for throughput degradation"
+      enabled: true
+      degradation_threshold: 30  # percentage drop
+      baseline_window: "1h"
+      severity: "medium"
+      action: "alert"
+
+# Protocol-Specific Rules
+protocol_rules:
+  http:
+    - name: "http_method_anomaly"
+      description: "Detect unusual HTTP methods"
+      enabled: true
+      allowed_methods: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"]
+      severity: "medium"
+      action: "log"
+      
+    - name: "large_http_payload"
+      description: "Detect unusually large HTTP payloads"
+      enabled: true
+      threshold: "100MB"
+      severity: "medium"
+      action: "alert"
+
+  dns:
+    - name: "dns_tunneling"
+      description: "Detect DNS tunneling attempts"
+      enabled: true
+      query_length_threshold: 200
+      query_frequency_threshold: 100
+      time_window: "1m"
+      severity: "high"
+      action: "block"
+      
+    - name: "dns_amplification"
+      description: "Detect DNS amplification attacks"
+      enabled: true
+      response_size_threshold: "4KB"
+      query_rate_threshold: 1000
+      severity: "high"
+      action: "rate_limit"
+
+  ftp:
+    - name: "ftp_brute_force"
+      description: "Detect FTP brute force attacks"
+      enabled: true
+      failed_login_threshold: 5
+      time_window: "2m"
+      severity: "high"
+      action: "block"
+
+# IP and Geolocation Rules
+ip_rules:
+  blacklist:
+    - name: "known_malicious_ips"
+      description: "Block traffic from known malicious IPs"
+      enabled: true
+      ip_lists: ["tor_exit_nodes", "malware_c2", "compromised_hosts"]
+      severity: "high"
+      action: "block"
+
+  geolocation:
+    - name: "suspicious_geolocation"
+      description: "Alert on traffic from suspicious countries"
+      enabled: true
+      blocked_countries: ["CN", "RU", "KP"]
+      whitelist_ips: ["192.168.0.0/16", "10.0.0.0/8"]
+      severity: "medium"
+      action: "alert"
+
+# Time-based Rules
+time_based_rules:
+  - name: "after_hours_activity"
+    description: "Detect unusual activity outside business hours"
+    enabled: true
+    business_hours: "09:00-17:00"
+    business_days: ["monday", "tuesday", "wednesday", "thursday", "friday"]
+    severity: "medium"
+    action: "alert"
+
+# Machine Learning Integration
+ml_detection:
+  - name: "ml_anomaly_detection"
+    description: "Use ML models for advanced anomaly detection"
+    enabled: true
+    model_endpoint: "http://ml-models:8080/anomaly"
+    confidence_threshold: 0.8
+    severity: "medium"
+    action: "alert"
+    
+  - name: "ml_threat_classification"
+    description: "ML-based threat classification"
+    enabled: true
+    model_endpoint: "http://ml-models:8080/threat"
+    confidence_threshold: 0.9
+    severity: "high"
+    action: "block"
+
+# Alert Configuration
+alerting:
+  channels:
+    - type: "email"
+      enabled: true
+      recipients: ["admin@company.com", "security@company.com"]
+      
+    - type: "syslog"
+      enabled: true
+      server: "syslog.company.com"
+      port: 514
+      
+    - type: "webhook"
+      enabled: true
+      url: "https://alerts.company.com/webhook"
+      
+    - type: "slack"
+      enabled: false
+      webhook_url: "https://hooks.slack.com/services/..."
+
+  rate_limiting:
+    max_alerts_per_rule: 10
+    time_window: "1m"
+    
+  escalation:
+    critical: "immediate"
+    high: "5m"
+    medium: "15m"
+    low: "1h"

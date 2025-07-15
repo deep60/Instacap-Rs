@@ -1,0 +1,143 @@
+
+{
+  "traffic_thresholds": {
+    "bandwidth": {
+      "warning_mbps": 800,
+      "critical_mbps": 950,
+      "baseline_mbps": 100
+    },
+    "packet_rate": {
+      "warning_pps": 50000,
+      "critical_pps": 75000,
+      "baseline_pps": 1000
+    },
+    "connection_rate": {
+      "warning_cps": 1000,
+      "critical_cps": 2000,
+      "baseline_cps": 50
+    }
+  },
+  "anomaly_thresholds": {
+    "traffic_spike": {
+      "percentage_increase": 300,
+      "time_window_seconds": 60,
+      "minimum_baseline_packets": 100
+    },
+    "protocol_anomaly": {
+      "unknown_protocol_threshold": 0.05,
+      "protocol_ratio_deviation": 2.0
+    },
+    "geographic_anomaly": {
+      "new_country_threshold": 5,
+      "suspicious_country_list": ["CN", "RU", "KP", "IR"]
+    }
+  },
+  "security_thresholds": {
+    "port_scanning": {
+      "unique_ports_per_minute": 50,
+      "scan_detection_window": 300,
+      "failed_connection_ratio": 0.8
+    },
+    "ddos_detection": {
+      "syn_flood_threshold": 10000,
+      "icmp_flood_threshold": 5000,
+      "udp_flood_threshold": 8000,
+      "detection_window_seconds": 30
+    },
+    "brute_force": {
+      "failed_login_attempts": 10,
+      "time_window_minutes": 5,
+      "lockout_duration_minutes": 30
+    },
+    "data_exfiltration": {
+      "outbound_data_threshold_mb": 100,
+      "suspicious_upload_ratio": 10.0,
+      "monitoring_window_minutes": 15
+    }
+  },
+  "performance_thresholds": {
+    "latency": {
+      "warning_ms": 100,
+      "critical_ms": 500,
+      "timeout_ms": 5000
+    },
+    "jitter": {
+      "warning_ms": 50,
+      "critical_ms": 200
+    },
+    "packet_loss": {
+      "warning_percentage": 1.0,
+      "critical_percentage": 5.0
+    },
+    "throughput": {
+      "minimum_mbps": 10,
+      "expected_mbps": 1000
+    }
+  },
+  "protocol_thresholds": {
+    "http": {
+      "response_time_ms": 2000,
+      "error_rate_percentage": 5.0,
+      "request_rate_per_second": 1000
+    },
+    "https": {
+      "handshake_time_ms": 3000,
+      "certificate_expiry_days": 30
+    },
+    "dns": {
+      "query_timeout_ms": 5000,
+      "failure_rate_percentage": 2.0,
+      "suspicious_query_length": 253
+    },
+    "ftp": {
+      "connection_timeout_ms": 10000,
+      "transfer_rate_mbps": 50,
+      "suspicious_file_extensions": [".exe", ".bat", ".cmd", ".scr"]
+    },
+    "smtp": {
+      "connection_timeout_ms": 30000,
+      "message_size_mb": 25,
+      "relay_attempts": 3
+    },
+    "ssh": {
+      "connection_timeout_ms": 30000,
+      "failed_auth_attempts": 5,
+      "session_duration_hours": 24
+    }
+  },
+  "resource_thresholds": {
+    "memory": {
+      "warning_percentage": 80,
+      "critical_percentage": 95
+    },
+    "cpu": {
+      "warning_percentage": 70,
+      "critical_percentage": 90
+    },
+    "disk_space": {
+      "warning_percentage": 85,
+      "critical_percentage": 95
+    },
+    "capture_buffer": {
+      "warning_percentage": 75,
+      "critical_percentage": 90,
+      "max_size_mb": 1024
+    }
+  },
+  "time_windows": {
+    "real_time_seconds": 5,
+    "short_term_minutes": 5,
+    "medium_term_minutes": 30,
+    "long_term_hours": 24
+  },
+  "alert_settings": {
+    "cooldown_minutes": 5,
+    "escalation_threshold": 3,
+    "severity_levels": {
+      "info": 1,
+      "warning": 2,
+      "critical": 3,
+      "emergency": 4
+    }
+  }
+}
