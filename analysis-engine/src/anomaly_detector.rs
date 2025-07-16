@@ -1,7 +1,6 @@
 use std::collections::{HashMap, VecDeque};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
-use tokio::time::interval;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkMetrics {
@@ -68,7 +67,7 @@ pub struct BaselineMetrics {
 pub struct AnomalyDetector {
     baseline: Option<BaselineMetrics>,
     metrics_history: VecDeque<NetworkMetrics>,
-    port_scan_tracker: HashMap<String, PortSacnTracker>
+    port_scan_tracker: HashMap<String, PortScanTracker>,
     connection_tracker: HashMap<String, ConnectionTracker>,
     protocol_whitelist: Vec<String>,
     suspicious_ports: Vec<u16>,
@@ -79,8 +78,8 @@ pub struct AnomalyDetector {
 }
 
 #[derive(Debug)]
-struct PortSacnTracker {
-    port_accessed: std::collections::HashSet<u16,
+struct PortScanTracker {
+    port_accessed: std::collections::HashSet<u16>,
     first_seen: Instant,
     last_activity: Instant,
 }
@@ -162,7 +161,7 @@ impl AnomalyDetector {
             alerts.extend(self.detect_traffic_spikes(&metrics, baseline));
 
             // Unusual protocol usage detection
-            alerts.extend(self.detect_unusual_protocol_usage(&metrics, baseline));
+            alerts.extend(self.detect_unusual_protocols(&metrics, baseline));
 
             //Performance degradation detection
             alerts.extend(self.detect_performance_issues(&metrics, baseline));
@@ -188,8 +187,9 @@ impl AnomalyDetector {
 
     fn should_update_baseline(&self) -> bool {
         match self.last_baseline_update {
-            Some(last_update) => { last_update.elapsed() > self.learning_period && self.metrics_history.len() >= 50 },
-            None => self.metrics_history,len() >= 100,
+            Some(last_update) => { 
+                last_update.elapsed() > self.learning_period && self.metrics_history.len() >= 50 },
+            None => self.metrics_history.len() >= 100,
         }
     }
 
@@ -223,17 +223,17 @@ impl AnomalyDetector {
         let baseline = BaselineMetrics {
             avg_bytes_per_second: calculate_mean(&bytes_per_second),
             avg_packets_per_second: calculate_mean(&packets_per_second),
-            avg_connection_count: calculate_mean(&connection_counts),
-            avg_unique_ips: calculate_mean(&unique_ips),
+            avg_connection_count: calculate_mean(&connection_counts) as u32,
+            avg_unique_ips: calculate_mean(&unique_ips) as u32,
             std_bytes_per_second: calculate_std_dev(&bytes_per_second),
             std_packets_per_second: calculate_std_dev(&packets_per_second),
             std_connection_count: calculate_std_dev(&connection_counts),
             std_unique_ips: calculate_std_dev(&unique_ips),
             common_protocols: protocol_counts.into_iter()
-                .map(|(k, v)| (k, calculate_mean(&v.into_iter().map(|x| x as f64).collect())))
+                .map(|(k, v)| (k, calculate_mean(&v.into_iter().map(|x| x as f64).collect::<Vec<f64>>())))
                 .collect(),
             common_ports: port_counts.into_iter()
-                .map(|(k, v)| (k, calculate_mean(&v.into_iter().map(|x| x as f64).collect())))
+                .map(|(k, v)| (k, calculate_mean(&v.into_iter().map(|x| x as f64).collect::<Vec<f64>>())))
                 .collect(),
         };
         self.baseline = Some(baseline);
@@ -297,10 +297,10 @@ impl AnomalyDetector {
         alerts
     }
 
-    fn detect_unusual_protocols(&self, metrics: &NetworkMetrics, baseline: &BaselineMetrics) -> Vec<AnomalyAlert> {
+    fn detect_unusual_protocols(&self, metrics: &NetworkMetrics, _baseline: &BaselineMetrics) -> Vec<AnomalyAlert> {
         let mut alerts = Vec::new();
 
-        let total_protocol_activity: u32 = metrics.protocol_distribution.values().sum();)
+        let total_protocol_activity: u32 = metrics.protocol_distribution.values().sum();
 
         for (protocol, count) in &metrics.protocol_distribution {
             let percentage = *count as f64 / total_protocol_activity as f64;
@@ -329,7 +329,7 @@ impl AnomalyDetector {
 
     fn detect_port_scanning(&mut self, metrics: &NetworkMetrics) -> Vec<AnomalyAlert> {
         let mut alerts = Vec::new();
-        let now = Instant::now();
+        let _now = Instant::now();
 
         // This is a simplified port scan detection
         // In a real implementation, you'd need packet_level data
@@ -347,7 +347,8 @@ impl AnomalyDetector {
                     destination_ip: None,
                     protocol: None,
                     port: Some(*port),
-                })
+                });
+            }
         }
 
         alerts
@@ -390,7 +391,7 @@ impl AnomalyDetector {
                 severity: Severity::Critical,
                 description: format!(
                     "Potential data exfiltration detected: {:.2} MB/sec outbound traffic",
-                    metrics.bytes_per_second / (1024 * 1024)
+                    metrics.bytes_per_second / (1024.0 * 1024.0)
                 ),
                 timestamp: metrics.timestamp,
                 confidence: 0.6,
@@ -463,13 +464,6 @@ impl AnomalyDetector {
         alerts
     }
 
-    fn calculate_mean(values: &[f64]) -> f64 {
-        if values.is_empty() {
-            return 0.0;
-        }
-        values.iter().sum::<f64>() / values.len() as f64
-    }                                                                                                                                                                                                                                                                                                                                                                                                                       
-
     fn cleanup_trackers(&mut self) {
         let now = Instant::now();
         let cleanup_threshold = Duration::from_secs(300); // 5 minutes
@@ -491,24 +485,43 @@ impl AnomalyDetector {
 
     pub fn update_thresholds(&mut self, thresholds: DetectionThresholds) {
         self.detection_threshold = thresholds;
-    } 
-
-    fn calculate_std_dev(values: &[f64]) -> f64 {
-        if values.len < 2 {
-            return 0.0;
-        }
-        let mean = Self::calculate_mean(values);
-        let variance = values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (values.len() - 1) as f64;
-        variance.sqrt()
     }
 
-    fn calculate_confidence(current: f64, baseline: f64, std_dev: f64) -> f64 {
-        if std_dev == 0.0 {
-            return if current == baseline { 1.0 } else { 0.0 }; // No variation, full confidence
-        }
-        let z_score = (current - baseline).abs() / std_dev;
-        (z_score / 5.0).min(1.0) // Normalize to [0, 1]
+    pub async fn analyze(&mut self, _packet: &crate::PacketData) -> Result<Vec<AnomalyAlert>, Box<dyn std::error::Error + Send>> {
+        // This method should process individual packets
+        // For now, return empty alerts as it needs packet-level implementation
+        Ok(vec![])
     }
+
+    pub async fn cleanup_old_data(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
+        self.cleanup_trackers();
+        Ok(())
+    }
+}
+
+// Helper functions moved outside impl block
+fn calculate_mean(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.iter().sum::<f64>() / values.len() as f64
+}
+
+fn calculate_std_dev(values: &[f64]) -> f64 {
+    if values.len() < 2 {
+        return 0.0;
+    }
+    let mean = calculate_mean(values);
+    let variance = values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (values.len() - 1) as f64;
+    variance.sqrt()
+}
+
+fn calculate_confidence(current: f64, baseline: f64, std_dev: f64) -> f64 {
+    if std_dev == 0.0 {
+        return if current == baseline { 1.0 } else { 0.0 }; // No variation, full confidence
+    }
+    let z_score = (current - baseline).abs() / std_dev;
+    (z_score / 5.0).min(1.0) // Normalize to [0, 1]
 }
 
 #[cfg(test)]
@@ -520,7 +533,7 @@ mod tests {
     async fn test_anomaly_detector_creation() {
         let detector = AnomalyDetector::new();
         assert!(detector.baseline.is_none());
-        assert_eq!(detector.metric_history.len(), 0);
+        assert_eq!(detector.metrics_history.len(), 0);
     }
 
     #[tokio::test]

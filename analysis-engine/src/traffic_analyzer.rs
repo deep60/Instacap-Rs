@@ -16,7 +16,7 @@ pub struct PacketInfo {
     pub flags: Vec<String>, // TCP flags (if applicable)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct FlowKey {
     pub src_ip: IpAddr,
     pub dst_ip: IpAddr,
@@ -62,6 +62,7 @@ pub struct PerformanceStats {
 pub struct TrafficAnalyzer {
     flows: HashMap<FlowKey, FlowStats>,
     packet_buffer: VecDeque<PacketInfo>,
+    #[serde(skip, default = "Instant::now")]
     start_time: Instant,
     window_size: Duration,
     total_packets: u64,
@@ -99,7 +100,7 @@ impl TrafficAnalyzer {
 
         // Add to sliding window buffer
         self.packet_buffer.push_back(packet);
-        self.cleanup_old_data();
+        self.cleanup_old_data_internal();
     }
 
     fn update_flow_stats(&mut self, packet: &PacketInfo) {
@@ -178,7 +179,7 @@ impl TrafficAnalyzer {
         rng.gen_range(1.0..100.0) // 1-100ms mock RTT
     }
 
-    fn cleanup_old_data(&mut self) {
+    fn cleanup_old_data_internal(&mut self) {
         let cutoff_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -239,6 +240,8 @@ impl TrafficAnalyzer {
             packets_per_second,
             bytes_per_second,
             protocol_distribution: self.protocol_stats.clone(),
+            top_talkers,
+            port_activity: self.port_stats.clone(),
             packet_size_distribution
         }
     }
@@ -250,8 +253,8 @@ impl TrafficAnalyzer {
             0.0
         };
 
-        let jitter_ms = if send.rtt_samples.len() > 1 {
-            let mean = lattency_ms;
+        let jitter_ms = if self.rtt_samples.len() > 1 {
+            let mean = latency_ms;
             let variance: f64 = self.rtt_samples.iter()
                 .map(|x| (x - mean).powi(2))
                 .sum::<f64>() / (self.rtt_samples.len() -1) as f64;
@@ -344,11 +347,11 @@ impl TrafficAnalyzer {
 
     pub fn get_bandwidth_utilization(&self, link_capacity_mbps: f64) -> f64 {
         let performance = self.get_performance_stats();
-        (performance_throught_mbps / link_capacity_mbps) * 100.0
+        (performance.throughput_mbps / link_capacity_mbps) * 100.0
     }
 
     pub fn reset_stats(&mut self) {
-        self.flow.clear();
+        self.flows.clear();
         self.packet_buffer.clear();
         self.start_time = Instant::now();
         self.total_packets = 0;
@@ -359,5 +362,41 @@ impl TrafficAnalyzer {
         self.performance_buffer.clear();
         self.rtt_samples.clear();
         self.lost_packets = 0;
+    }
+
+    pub async fn update_stats(&mut self, packet: &crate::PacketData) {
+        // Convert PacketData to PacketInfo for internal processing
+        let packet_info = PacketInfo {
+            timestamp: packet.timestamp,
+            packet_size: packet.packet_size,
+            payload_size: packet.payload.len(),
+            src_ip: packet.source_ip.parse().unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0))),
+            dst_ip: packet.dest_ip.parse().unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0))),
+            src_port: packet.source_port,
+            dst_port: packet.dest_port,
+            protocol: packet.protocol.clone(),
+            flags: packet.flags.keys().cloned().collect(),
+        };
+        
+        self.analyze_packet(packet_info);
+    }
+
+    pub async fn get_performance_metrics(&self) -> crate::PerformanceMetrics {
+        let stats = self.get_performance_stats();
+        let traffic_metrics = self.get_traffic_metrics();
+        
+        crate::PerformanceMetrics {
+            packet_per_second: traffic_metrics.packets_per_second as u64,
+            bytes_per_second: traffic_metrics.bytes_per_second as u64,
+            average_latency_ms: stats.latency_ms,
+            packet_loss_rate: stats.packet_loss_rate,
+            jitter_ms: stats.jitter_ms,
+            connection_count: self.flows.len() as u64,
+            protocol_distribution: traffic_metrics.protocol_distribution,
+        }
+    }
+
+    pub fn cleanup_old_data(&mut self) {
+        self.cleanup_old_data_internal();
     }
 }

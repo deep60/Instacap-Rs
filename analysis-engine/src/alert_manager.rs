@@ -70,7 +70,7 @@ impl Alert {
 
     pub fn with_network_info(mut self, src_ip: String, dest_ip: String, protocol: String, port: u16) -> Self {
         self.source_ip = Some(src_ip);
-        self.destination_ip = Some(dst_ip);
+        self.destination_ip = Some(dest_ip);
         self.protocol = Some(protocol);
         self.port = Some(port);
         self
@@ -318,7 +318,7 @@ impl AlertManager {
                 let retention_threshold = current_time - retention.as_secs();
 
                 // Remove old alerts
-                alerts_gaurd.retain(|alert| alert.timestamp > retention_threshold);
+                alerts_guard.retain(|alert| alert.timestamp > retention_threshold);
             }
         });
     }
@@ -328,15 +328,16 @@ impl AlertManager {
 
         tokio::spawn(async move {
             loop {
-                let mut receiver_gaurd = receiver.lock().unwrap();
-                if let Ok(alert) = receiver_gaurd.try_recv() {
+                let alert_result = {
+                    let mut receiver_gaurd = receiver.lock().unwrap();
+                    receiver_gaurd.try_recv()
+                };
+                
+                if let Ok(_alert) = alert_result {
                     // Process alert (additional processing can be added here)
-                    drop(receiver_gaurd);
-
                     // Simulate processing time
                     sleep(Duration::from_millis(10)).await;
                 } else {
-                    drop(receiver_gaurd);
                     sleep(Duration::from_millis(100)).await;
                 }
             }
@@ -344,7 +345,7 @@ impl AlertManager {
     }
 
     // Convenience methods for creating common alerts
-    pub fn create_anomaly_alert(&self, description: String, severity: AlertSeverity) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn create_anomaly_alert(&mut self, description: String, severity: AlertSeverity) -> Result<(), Box<dyn std::error::Error>> {
         let alert = Alert::new(
             AlertType::AnomalyDetected,
             severity,
@@ -354,7 +355,7 @@ impl AlertManager {
         self.create_alert(alert)
     }
 
-    pub fn create_threat_alert(&self, threat_type: String, src_ip: String, dst_ip: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn create_threat_alert(&mut self, threat_type: String, src_ip: String, dst_ip: String) -> Result<(), Box<dyn std::error::Error>> {
         let alert = Alert::new(
             AlertType::ThreatDetected,
             AlertSeverity::High,
@@ -365,7 +366,7 @@ impl AlertManager {
         self.create_alert(alert)
     }
 
-    pub fn create_performance_alert(&self, metrics: String, value: f64, threshold: f64) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn create_performance_alert(&mut self, metrics: String, value: f64, threshold: f64) -> Result<(), Box<dyn std::error::Error>> {
         let severity = if value > threshold * 2.0 {
             AlertSeverity::Critical
         } else if value > threshold * 1.5 {
@@ -379,14 +380,14 @@ impl AlertManager {
             severity,
             format!("Performance Issue: {}", metrics),
             format!("{} value {} exceeds threshold {}", metrics, value, threshold),
-        ).with_metadata("metrics".to_string(), metric)
+        ).with_metadata("metrics".to_string(), metrics)
          .with_metadata("value".to_string(), value.to_string())
          .with_metadata("threshold".to_string(), threshold.to_string());
 
         self.create_alert(alert)
     }
 
-    pub fn create_traffic_spike_alert(&self, current_rate: u64, baseline: u64) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn create_traffic_spike_alert(&mut self, current_rate: u64, baseline: u64) -> Result<(), Box<dyn std::error::Error>> {
         let alert = Alert::new(
             AlertType::TrafficSpike,
             AlertSeverity::Medium,
@@ -398,7 +399,7 @@ impl AlertManager {
         self.create_alert(alert)
     }
 
-    pub fn create_port_scan_alert(&self, scanner_ip: String, target_ip: String, port_count: u16) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn create_port_scan_alert(&mut self, scanner_ip: String, target_ip: String, port_count: u16) -> Result<(), Box<dyn std::error::Error>> {
         let alert = Alert::new(
             AlertType::PortScan,
             AlertSeverity::High,
@@ -408,5 +409,29 @@ impl AlertManager {
          .with_metadata("port_scanned".to_string(), port_count.to_string());
 
         self.create_alert(alert)
+    }
+
+    pub async fn should_send_alert(&self, alert: &crate::Alert) -> bool {
+        // Simple rate limiting logic
+        true // For now, always allow alerts
+    }
+
+    pub async fn record_alert(&self, alert: &crate::Alert) {
+        // Record alert for tracking purposes
+        println!("Recording alert: {}", alert.id);
+    }
+
+pub async fn cleanup_old_data(&self) -> Result<(), Box<dyn std::error::Error + Send>> {
+        // Cleanup old alerts
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let mut alerts_guard = self.alerts.lock().unwrap();
+        let retention_threshold = current_time - self.alert_retention.as_secs();
+        
+        alerts_guard.retain(|alert| alert.timestamp > retention_threshold);
+        Ok(())
     }
 }

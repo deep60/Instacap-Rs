@@ -77,10 +77,10 @@ impl Default for AnalysisConfig {
 }
 
 pub struct AnalysisEngine {
-    anomaly_detector: AnomalyDetector;
-    threat_detector: ThreatDetector;
-    traffic_analyzer: TrafficAnalyzer;
-    alert_manager: AlertManager;
+    anomaly_detector: AnomalyDetector,
+    threat_detector: ThreatDetector,
+    traffic_analyzer: TrafficAnalyzer,
+    alert_manager: AlertManager,
     config: Arc<RwLock<AnalysisConfig>>,
     packet_rx: mpsc::Receiver<PacketData>,
     alert_tx: mpsc::Sender<Alert>, 
@@ -88,24 +88,26 @@ pub struct AnalysisEngine {
 
 impl AnalysisEngine {
     pub fn new(
-        packet_rx: mpsc::Receiver<>,
-        alert_tx: mpsc::Sender<>,
+        packet_rx: mpsc::Receiver<PacketData>,
+        alert_tx: mpsc::Sender<Alert>,
         config: AnalysisConfig,
     ) -> Self {
         let config = Arc::new(RwLock::new(config));
 
+        let (threat_alert_tx, _threat_alert_rx) = mpsc::channel(100);
+        
         Self {
-            anomaly_detector: AnomalyDetector::new(config.clone()),
-            threat_detector: ThreatDetector::new(config.clone()),
-            traffic_analyzer: TrafficAnalyzer::new(config.clone()),
-            alert_manager: AlertManager::new(config.clone()),
+            anomaly_detector: AnomalyDetector::new(),
+            threat_detector: ThreatDetector::new(threat_alert_tx),
+            traffic_analyzer: TrafficAnalyzer::new(60), // 60 second window
+            alert_manager: AlertManager::new(100, Duration::from_secs(3600)), // Max alerts, retention period
             config,
             packet_rx,
             alert_tx,
         }
     }
 
-    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
         println!("Starting Analysis Engine...");
 
         // Start background tasks
@@ -125,14 +127,14 @@ impl AnalysisEngine {
                 // Periodic performance analysis
                 _ = performance_interval.tick() => {
                     if let Err(e) = self.analyze_performance().await {
-                        eprintln("Error in performance analysis: {}", e);
+                        eprintln!("Error in performance analysis: {}", e);
                     }
                 }
 
                 // Periodic cleanup
                 _ = cleanup_interval.tick() => {
                     if let Err(e) = self.cleanup_old_data().await {
-                        eprintln("Error in cleanup: {}", e);
+                        eprintln!("Error in cleanup: {}", e);
                     }
                 }
 
@@ -146,33 +148,44 @@ impl AnalysisEngine {
         Ok(())
     }
 
-    async fn process_packet(&mut self, packet: PacketData) -> Result<(), Box<dyn std::err::Error>> {
+    async fn process_packet(&mut self, packet: PacketData) -> Result<(), Box<dyn std::error::Error + Send>> {
         // Update traffic statistics
-        self.traffic_analyzer.uptime_stats(&packet).await;
+        self.traffic_analyzer.update_stats(&packet).await;
 
         // Run anomaly detection
-        if let Some(anomaly_score) = self.anomaly_detector.analyze(&packet).await? {
-            let config = self.config.read().await;
-            if anomaly_score > config.anomaly_threshold {
-                let alert = Alert {
-                    id: format!("anomaly_{}", packet.timestamp),
-                    severity: self.calculate_anomaly_severity(anomaly_score),
-                    alert_type: AlertType::Anomaly,
-                    message: format!("Anomaly behaviour detected (score: {:.2})", anomaly_score),
-                    timestamp: packet.timestamp,
-                    source_ip: Some(packet.source_ip.clone()),
-                    dest_ip: Some(packet.dest_ip.clone()),
-                    metadata: self.create_anomaly_metadata(&packet, anomaly_score),
-                };
-
-                self.send_alert(alert).await?;
-            }
+        let anomaly_alerts = self.anomaly_detector.analyze(&packet).await?;
+        for anomaly_alert in anomaly_alerts {
+            // Convert AnomalyAlert to Alert
+            let alert = Alert {
+                id: anomaly_alert.alert_id,
+                severity: match anomaly_alert.severity {
+                    anomaly_detector::Severity::Low => AlertSeverity::Low,
+                    anomaly_detector::Severity::Medium => AlertSeverity::Medium,
+                    anomaly_detector::Severity::High => AlertSeverity::High,
+                    anomaly_detector::Severity::Critical => AlertSeverity::Critical,
+                },
+                alert_type: AlertType::Anomaly,
+                message: anomaly_alert.description,
+                timestamp: anomaly_alert.timestamp,
+                source_ip: anomaly_alert.source_ip,
+                dest_ip: anomaly_alert.destination_ip,
+                metadata: HashMap::from([
+                    ("confidence".to_string(), anomaly_alert.confidence.to_string()),
+                    ("anomaly_type".to_string(), format!("{:?}", anomaly_alert.anomaly_type)),
+                    ("affected_metrics".to_string(), anomaly_alert.affected_metrics.join(", ")),
+                ]),
+            };
+            
+            self.send_alert(alert).await?;
         }
 
         // Run threat detection
-        if let Some(threat_score) = self.threat_detector.analyze(&packet).await? {
-            let config = self.config.read().await;
-            if threat_score > config.threat_score_threshold {
+        if let Some(threat_score) = self.threat_detector.analyze_packet(&packet).await? {
+            let threat_score_threshold = {
+                let config = self.config.read().await;
+                config.threat_score_threshold
+            };
+            if threat_score > threat_score_threshold {
                 let alert = Alert {
                     id: format!("threat_{}", packet.timestamp),
                     severity: self.calculate_threat_severity(threat_score),
@@ -189,8 +202,11 @@ impl AnalysisEngine {
         }
 
         // Deep packet inspection if enabled
-        let config = self.config.read().await;
-        if config.enable_deep_inspection {
+        let enable_deep_inspection = {
+            let config = self.config.read().await;
+            config.enable_deep_inspection
+        };
+        if enable_deep_inspection {
             if let Some(security_issues) = self.deep_inspect_payload(&packet).await? {
                 for issue in security_issues {
                     let alert = Alert {
@@ -212,7 +228,7 @@ impl AnalysisEngine {
         Ok(())
     }
 
-    async fn analyze_performance(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn analyze_performance(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
         let metrics = self.traffic_analyzer.get_performance_metrics().await;
 
         // Check for performance issues
@@ -221,7 +237,7 @@ impl AnalysisEngine {
                 id: format!("perf_loss_{}", chrono::Utc::now().timestamp()),
                 severity: AlertSeverity::High,
                 alert_type: AlertType::Performance,
-                message: format!("High latency detected (score: {:.2})", metrics.avg_latency_ms),
+                message: format!("High packet loss detected (rate: {:.2})", metrics.packet_loss_rate),
                 timestamp: chrono::Utc::now().timestamp() as u64,
                 source_ip: None,
                 dest_ip: None,
@@ -248,22 +264,22 @@ impl AnalysisEngine {
                     ("latency_ms".to_string(), metrics.average_latency_ms.to_string()),
                 ]),
             };
-            send.send_alert(alert).await?;
+            self.send_alert(alert).await?;
         }
 
         // Check for traffic spikes
-        if metrics.packets_per_second > 10000 {      // Configurable threshold
+        if metrics.packet_per_second > 10000 {      // Configurable threshold
             let alert = Alert {
                 id: format!("perf_spike_{}", chrono::Utc::now().timestamp()),
                 severity: AlertSeverity::Medium,
                 alert_type: AlertType::Performance,
-                message: format!("Traffic spike detected: {} pps", metrics.packets_per_second),
+                message: format!("Traffic spike detected: {} pps", metrics.packet_per_second),
                 timestamp: chrono::Utc::now().timestamp() as u64,
                 source_ip: None,
                 dest_ip: None,
                 metadata: HashMap::from([
                     ("metric_type".to_string(), "traffic_spike".to_string()),
-                    ("pps".to_string(), metrics.packets_per_second.to_string()),
+                    ("pps".to_string(), metrics.packet_per_second.to_string()),
                 ]),
             };
 
@@ -273,18 +289,18 @@ impl AnalysisEngine {
         Ok(())
     }
 
-    async fn cleanup_old_data(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn cleanup_old_data(&mut self) -> Result<(), Box<dyn std::error::Error + Send>> {
         // Clean up old data from detectors old analyzers
         self.anomaly_detector.cleanup_old_data().await?;
         self.threat_detector.cleanup_old_data().await?;
-        self.traffic_analyzer.cleanup_old_data().await?;
+        self.traffic_analyzer.cleanup_old_data();
         self.alert_manager.cleanup_old_data().await?;
 
         println!("Cleanup completed");
         Ok(())
     }
 
-    async fn send_alert(&mut self, alert: Alert) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_alert(&mut self, alert: Alert) -> Result<(), Box<dyn std::error::Error + Send>> {
         // Rate limiting check
         if !self.alert_manager.should_send_alert(&alert).await {
             return Ok(());
@@ -344,7 +360,7 @@ impl AnalysisEngine {
         ])
     }
 
-    async fn deep_inspect_payload(&self, packet: &PacketData) -> Result<Option<Vec<SecurityIssue>>, Box<dyn std::error::Error>> {
+    async fn deep_inspect_payload(&self, packet: &PacketData) -> Result<Option<Vec<SecurityIssue>>, Box<dyn std::error::Error + Send>> {
         let mut issues = Vec::new();
 
         // Check for suspicious patterns in payload
@@ -383,17 +399,18 @@ impl AnalysisEngine {
     fn contains_suspicious_patterns(&self, payload: &[u8]) -> bool {
         // Simple pattern matching for demonstration
         let suspicious_strings = [
-            b"SELECT * FROM",
-            b"DROP TABLE",
-            b"../../../",
-            b"<script>",
-            b"eval(",
-            b"cmd.exe",
-            b"/bin/sh",
+            "SELECT * FROM",
+            "DROP TABLE",
+            "../../../",
+            "<script>",
+            "eval(",
+            "cmd.exe",
+            "/bin/sh",
         ];
 
+        let payload_str = String::from_utf8_lossy(payload);
         for pattern in &suspicious_strings {
-            if payload.windows(pattern.len()).any(|window| window == *pattern) {
+            if payload_str.contains(pattern) {
                 return true;
             }
         }
@@ -403,16 +420,20 @@ impl AnalysisEngine {
 
     fn check_malware_signatures(&self, payload: &[u8]) -> bool {
         // Simplified malware signature detection
-        let malware_signatures = [
-            b"\x4d\x5a\x90\x00",        //PE header
-            b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE",
-        ];
-
-        for signature in &malware_signatures {
-            if payload.len() >= signature.len() {
-                if payload.windows(signature.len()).any(|window| window == *signature) {
-                    return true;
-                }
+        let pe_header = b"\x4d\x5a\x90\x00";
+        let eicar_sig = b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE";
+        
+        // Check for PE header
+        if payload.len() >= pe_header.len() {
+            if payload.windows(pe_header.len()).any(|window| window == pe_header) {
+                return true;
+            }
+        }
+        
+        // Check for EICAR signature
+        if payload.len() >= eicar_sig.len() {
+            if payload.windows(eicar_sig.len()).any(|window| window == eicar_sig) {
+                return true;
             }
         }
 
@@ -440,8 +461,8 @@ pub struct PerformanceMetrics {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println("Starting Network Analysis Engine");
+async fn main() -> Result<(), Box<dyn std::error::Error + Send>> {
+    println!("Starting Network Analysis Engine");
 
     // Create channels for communication
     let (packet_tx, packet_rx) = mpsc::channel::<PacketData>(10000);
@@ -457,7 +478,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let alert_handler = tokio::spawn(async move {
         while let Some(alert) = alert_rx.recv().await {
             // Handle alerts - could send to external systems, log to database, etc.
-            println("ALert received: {:?}", alert);
+            println!("Alert received: {:?}", alert);
 
             // Example: Send to external monitoring system
             // external_monitor::send_alert(alert).await;
@@ -469,7 +490,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example: Start packet injection for testing
     let packet_injector = tokio::spawn(async move {
-        let mut counter: 0;
+        let mut counter = 0;
         let mut interval = interval(Duration::from_millis(10));
 
         loop {
@@ -487,7 +508,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 flags: HashMap::new(),
             };
 
-            if packet_rx.send(test_packet).await.is_err() {
+            if packet_tx.send(test_packet).await.is_err() {
                 break;
             }
 

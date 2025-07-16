@@ -1,0 +1,1 @@
+std::sync::MutexGuard<'_, UnboundedReceiver<alert_manager::Alert>>
