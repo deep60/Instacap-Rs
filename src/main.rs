@@ -354,6 +354,10 @@ impl NetworkAnalyzer {
             }
         }
         
+        // Enhanced packet processing
+        self.deep_packet_inspection(&packet_info, &[])?; // In real implementation, pass actual payload
+        self.analyze_geolocation(&packet_info)?;
+        
         // Update traffic statistics
         self.update_traffic_stats(&packet_info)?;
         
@@ -366,10 +370,71 @@ impl NetworkAnalyzer {
         // Update performance metrics
         self.update_performance_metrics(&packet_info)?;
         
+        // Send to external systems (Kafka/Elasticsearch)
+        self.send_to_kafka(&packet_info)?;
+        self.send_to_elasticsearch(&packet_info)?;
+        
         if self.args.verbose {
             debug!("Processed packet: {} -> {} ({})", 
                    packet_info.src_ip, packet_info.dst_ip, packet_info.protocol);
         }
+        
+        Ok(())
+    }
+    
+    // Kafka integration
+    fn send_to_kafka(&self, packet_info: &PacketInfo) -> Result<()> {
+        // In production, implement actual Kafka producer
+        // For now, just log the data that would be sent
+        if self.args.verbose {
+            debug!("Would send to Kafka: {:?}", packet_info);
+        }
+        Ok(())
+    }
+    
+    // Elasticsearch integration
+    fn send_to_elasticsearch(&self, packet_info: &PacketInfo) -> Result<()> {
+        // In production, implement actual Elasticsearch client
+        // For now, just log the data that would be indexed
+        if self.args.verbose {
+            debug!("Would index to Elasticsearch: {:?}", packet_info);
+        }
+        Ok(())
+    }
+    
+    // Enhanced statistics calculation
+    fn calculate_advanced_stats(&self) -> Result<()> {
+        let buffer = self.packet_buffer.lock().unwrap();
+        let mut stats = self.traffic_stats.lock().unwrap();
+        
+        if buffer.len() < 10 {
+            return Ok(());
+        }
+        
+        // Calculate packets per second
+        let time_window = 60; // seconds
+        let current_time = current_timestamp();
+        let recent_packets: Vec<_> = buffer.iter()
+            .filter(|p| current_time - p.timestamp < time_window)
+            .collect();
+        
+        stats.packets_per_second = recent_packets.len() as f64 / time_window as f64;
+        
+        // Calculate bytes per second
+        let recent_bytes: usize = recent_packets.iter()
+            .map(|p| p.packet_size)
+            .sum();
+        stats.bytes_per_second = recent_bytes as f64 / time_window as f64;
+        
+        // Update top talkers
+        let mut talker_stats: HashMap<String, u64> = HashMap::new();
+        for packet in recent_packets {
+            *talker_stats.entry(packet.src_ip.clone()).or_insert(0) += 1;
+        }
+        
+        let mut talkers: Vec<_> = talker_stats.into_iter().collect();
+        talkers.sort_by(|a, b| b.1.cmp(&a.1));
+        stats.top_talkers = talkers.into_iter().take(10).collect();
         
         Ok(())
     }
@@ -560,26 +625,35 @@ impl NetworkAnalyzer {
         let stats = Arc::clone(&self.traffic_stats);
         let anomaly_detector = Arc::clone(&self.anomaly_detector);
         let performance_monitor = Arc::clone(&self.performance_monitor);
+        let packet_buffer = Arc::clone(&self.packet_buffer);
         
         thread::spawn(move || {
             let mut last_report = Instant::now();
+            let mut last_flow_analysis = Instant::now();
             
             loop {
-                thread::sleep(Duration::from_secs(30));
+                thread::sleep(Duration::from_secs(10));
                 
+                // Regular statistics reporting
                 if last_report.elapsed() >= Duration::from_secs(30) {
-                    // Report statistics
                     let stats_guard = stats.lock().unwrap();
                     let perf_guard = performance_monitor.lock().unwrap();
+                    let anomaly_guard = anomaly_detector.lock().unwrap();
                     
                     info!("=== Traffic Statistics ===");
                     info!("Total packets: {}", stats_guard.total_packets);
                     info!("Total bytes: {}", stats_guard.total_bytes);
+                    info!("Packets/sec: {:.2}", stats_guard.packets_per_second);
+                    info!("Bytes/sec: {:.2}", stats_guard.bytes_per_second);
                     info!("Top protocols: {:?}", stats_guard.protocol_distribution);
                     
+                    // Performance metrics
                     if !perf_guard.latency_samples.is_empty() {
                         let avg_latency: f64 = perf_guard.latency_samples.iter().sum::<f64>() / perf_guard.latency_samples.len() as f64;
-                        info!("Average latency: {:.2} ms", avg_latency);
+                        let max_latency = perf_guard.latency_samples.iter().fold(0.0, |acc, &x| acc.max(x));
+                        let min_latency = perf_guard.latency_samples.iter().fold(f64::MAX, |acc, &x| acc.min(x));
+                        
+                        info!("Latency - Avg: {:.2}ms, Min: {:.2}ms, Max: {:.2}ms", avg_latency, min_latency, max_latency);
                     }
                     
                     if !perf_guard.throughput_samples.is_empty() {
@@ -587,8 +661,109 @@ impl NetworkAnalyzer {
                         info!("Average throughput: {:.2} Mbps", avg_throughput);
                     }
                     
+                    // Security metrics
+                    info!("Suspicious IPs tracked: {}", anomaly_guard.suspicious_ips.len());
+                    info!("Port scan sources: {}", anomaly_guard.port_scan_tracker.len());
+                    
+                    // Packet loss rate
+                    if perf_guard.total_packets > 0 {
+                        let loss_rate = (perf_guard.packet_loss_counter as f64 / perf_guard.total_packets as f64) * 100.0;
+                        info!("Packet loss rate: {:.2}%", loss_rate);
+                    }
+                    
                     last_report = Instant::now();
                 }
+                
+                // Periodic flow analysis
+                if last_flow_analysis.elapsed() >= Duration::from_secs(120) {
+                    let buffer_guard = packet_buffer.lock().unwrap();
+                    if !buffer_guard.is_empty() {
+                        info!("Performing network flow analysis...");
+                        // Flow analysis would go here
+                        drop(buffer_guard);
+                    }
+                    last_flow_analysis = Instant::now();
+                }
+            }
+        });
+        
+        // Start advanced statistics calculation thread
+        let stats_clone = Arc::clone(&self.traffic_stats);
+        let buffer_clone = Arc::clone(&self.packet_buffer);
+        
+        thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::from_secs(15));
+                
+                // Calculate advanced statistics
+                let buffer = buffer_clone.lock().unwrap();
+                let mut stats = stats_clone.lock().unwrap();
+                
+                if buffer.len() < 10 {
+                    continue;
+                }
+                
+                // Calculate packets per second
+                let time_window = 60; // seconds
+                let current_time = current_timestamp();
+                let recent_packets: Vec<_> = buffer.iter()
+                    .filter(|p| current_time - p.timestamp < time_window)
+                    .collect();
+                
+                stats.packets_per_second = recent_packets.len() as f64 / time_window as f64;
+                
+                // Calculate bytes per second
+                let recent_bytes: usize = recent_packets.iter()
+                    .map(|p| p.packet_size)
+                    .sum();
+                stats.bytes_per_second = recent_bytes as f64 / time_window as f64;
+                
+                // Update top talkers
+                let mut talker_stats: HashMap<String, u64> = HashMap::new();
+                for packet in recent_packets {
+                    *talker_stats.entry(packet.src_ip.clone()).or_insert(0) += 1;
+                }
+                
+                let mut talkers: Vec<_> = talker_stats.into_iter().collect();
+                talkers.sort_by(|a, b| b.1.cmp(&a.1));
+                stats.top_talkers = talkers.into_iter().take(10).collect();
+                
+                stats.timestamp = current_time;
+            }
+        });
+        
+        // Start cleanup thread for old data
+        let anomaly_detector_clone = Arc::clone(&self.anomaly_detector);
+        let threat_detector_clone = Arc::clone(&self.threat_detector);
+        let performance_monitor_clone = Arc::clone(&self.performance_monitor);
+        
+        thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::from_secs(300)); // Run every 5 minutes
+                
+                // Clean up old data
+                let mut anomaly_guard = anomaly_detector_clone.lock().unwrap();
+                let mut threat_guard = threat_detector_clone.lock().unwrap();
+                let mut perf_guard = performance_monitor_clone.lock().unwrap();
+                
+                // Clean old connection states
+                let cutoff = Instant::now() - Duration::from_secs(3600); // 1 hour
+                perf_guard.connection_states.retain(|_, timestamp| *timestamp > cutoff);
+                
+                // Clean old port scan tracking
+                let scan_cutoff = Instant::now() - Duration::from_secs(300); // 5 minutes
+                for (_, ports) in anomaly_guard.port_scan_tracker.iter_mut() {
+                    ports.retain(|_, timestamp| *timestamp > scan_cutoff);
+                }
+                anomaly_guard.port_scan_tracker.retain(|_, ports| !ports.is_empty());
+                
+                // Reset connection tracker periodically
+                if threat_guard.connection_tracker.len() > 10000 {
+                    threat_guard.connection_tracker.clear();
+                    info!("Cleared connection tracker to prevent memory overflow");
+                }
+                
+                info!("Performed periodic cleanup of tracking data");
             }
         });
         
