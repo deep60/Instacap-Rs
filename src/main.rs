@@ -2,13 +2,12 @@ use anyhow::{Result, Context};
 use clap::Parser;
 use log::{info, warn, error, debug};
 use std::collections::{HashMap, VecDeque};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::thread;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Sender};
 use serde::{Deserialize, Serialize};
-use pcap::{Capture, Device, Active};
+use pcap::{Capture, Device};
 use pnet::packet::{
     ethernet::{EtherTypes, EthernetPacket},
     ip::IpNextHeaderProtocols,
@@ -335,12 +334,13 @@ impl NetworkAnalyzer {
     
     fn parse_tcp_flags(&self, tcp: &TcpPacket) -> Vec<String> {
         let mut flags = Vec::new();
-        if tcp.get_fin() { flags.push("FIN".to_string()); }
-        if tcp.get_syn() { flags.push("SYN".to_string()); }
-        if tcp.get_rst() { flags.push("RST".to_string()); }
-        if tcp.get_psh() { flags.push("PSH".to_string()); }
-        if tcp.get_ack() { flags.push("ACK".to_string()); }
-        if tcp.get_urg() { flags.push("URG".to_string()); }
+        let tcp_flags = tcp.get_flags();
+        if tcp_flags & 0x01 != 0 { flags.push("FIN".to_string()); }
+        if tcp_flags & 0x02 != 0 { flags.push("SYN".to_string()); }
+        if tcp_flags & 0x04 != 0 { flags.push("RST".to_string()); }
+        if tcp_flags & 0x08 != 0 { flags.push("PSH".to_string()); }
+        if tcp_flags & 0x10 != 0 { flags.push("ACK".to_string()); }
+        if tcp_flags & 0x20 != 0 { flags.push("URG".to_string()); }
         flags
     }
     
@@ -534,7 +534,7 @@ impl NetworkAnalyzer {
         
         // Check for blacklisted IPs
         if detector.blacklisted_ips.contains(&packet_info.src_ip) {
-            let threat = ThreatIndicator {
+            let _threat = ThreatIndicator {
                 timestamp: current_timestamp(),
                 threat_type: "BLACKLISTED_IP".to_string(),
                 severity: "HIGH".to_string(),
@@ -547,7 +547,7 @@ impl NetworkAnalyzer {
                 confidence: 0.95,
             };
             
-            error!("Threat detected: {}", threat.description);
+            error!("Threat detected: {}", _threat.description);
         }
         
         // Check for DDoS patterns
@@ -650,7 +650,7 @@ impl NetworkAnalyzer {
                     // Performance metrics
                     if !perf_guard.latency_samples.is_empty() {
                         let avg_latency: f64 = perf_guard.latency_samples.iter().sum::<f64>() / perf_guard.latency_samples.len() as f64;
-                        let max_latency = perf_guard.latency_samples.iter().fold(0.0, |acc, &x| acc.max(x));
+                        let max_latency = perf_guard.latency_samples.iter().fold(0.0f64, |acc, &x| acc.max(x));
                         let min_latency = perf_guard.latency_samples.iter().fold(f64::MAX, |acc, &x| acc.min(x));
                         
                         info!("Latency - Avg: {:.2}ms, Min: {:.2}ms, Max: {:.2}ms", avg_latency, min_latency, max_latency);
@@ -909,7 +909,7 @@ impl NetworkAnalyzer {
                         
                         // Check for suspicious patterns
                         if self.is_suspicious_http_request(method, url) {
-                            let threat = ThreatIndicator {
+                            let _threat = ThreatIndicator {
                                 timestamp: current_timestamp(),
                                 threat_type: "SUSPICIOUS_HTTP".to_string(),
                                 severity: "MEDIUM".to_string(),
@@ -936,7 +936,7 @@ impl NetworkAnalyzer {
         if payload.len() > 12 { // Minimum DNS header size
             // Check for DNS tunneling (unusually large DNS queries)
             if payload.len() > 512 {
-                let alert = AnomalyAlert {
+                let _alert = AnomalyAlert {
                     timestamp: current_timestamp(),
                     alert_type: "DNS_TUNNELING".to_string(),
                     severity: "HIGH".to_string(),
@@ -977,7 +977,7 @@ impl NetworkAnalyzer {
         Ok(())
     }
     
-    fn is_suspicious_http_request(&self, method: &str, url: &str) -> bool {
+    fn is_suspicious_http_request(&self, _method: &str, url: &str) -> bool {
         // Check for common attack patterns
         let suspicious_patterns = [
             "sql", "union", "select", "drop", "insert", "update", "delete",
@@ -994,7 +994,7 @@ impl NetworkAnalyzer {
     fn analyze_geolocation(&self, packet_info: &PacketInfo) -> Result<()> {
         // Simple geolocation analysis - in production, use a proper GeoIP database
         if self.is_suspicious_geolocation(&packet_info.src_ip) {
-            let alert = AnomalyAlert {
+            let _alert = AnomalyAlert {
                 timestamp: current_timestamp(),
                 alert_type: "SUSPICIOUS_GEOLOCATION".to_string(),
                 severity: "MEDIUM".to_string(),
