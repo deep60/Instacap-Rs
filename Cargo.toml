@@ -19,4 +19,7 @@ ndarray = "0.16.1"
 linfa = "0.7.1"
 anyhow = "1.0.98"
 reqwest = "0.12.19"
+ctrlc = "3.4.7"
+pcap = "2.2.0"
+pnet = "0.35.0"
 
