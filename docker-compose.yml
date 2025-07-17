@@ -1,0 +1,137 @@
+version: '3.8'
+
+services:
+  packet-capture:
+    build:
+      context: ./packet-capture
+      dockerfile: Dockerfile
+    container_name: packet-capture
+    privileged: true
+    network_mode: host
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./data/captures:/app/captures
+      - /var/log/packet-analyzer:/var/log/packet-analyzer
+    environment:
+      - RUST_LOG=info
+      - CAPTURE_INTERFACE=eth0
+      - CAPTURE_BUFFER_SIZE=1048576
+      - MAX_PACKET_SIZE=65535
+      - ANALYSIS_ENGINE_URL=http://localhost:8081
+    depends_on:
+      - redis
+      - influxdb
+    restart: unless-stopped
+
+  analysis-engine:
+    build:
+      context: ./analysis-engine
+      dockerfile: Dockerfile
+    container_name: analysis-engine
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./data/analysis:/app/analysis
+      - /var/log/packet-analyzer:/var/log/packet-analyzer
+    environment:
+      - RUST_LOG=info
+      - REDIS_URL=redis://redis:6379
+      - INFLUXDB_URL=http://influxdb:8086
+      - ML_MODEL_URL=http://ml-models:8082
+    depends_on:
+      - redis
+      - influxdb
+      - ml-models
+    restart: unless-stopped
+
+  ml-models:
+    build:
+      context: ./ml-models
+      dockerfile: Dockerfile
+    container_name: ml-models
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./ml-models:/app
+      - ./data/models:/app/models
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MODEL_PATH=/app/models
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=packetanalyzer123
+      - DOCKER_INFLUXDB_INIT_ORG=packet-analyzer
+      - DOCKER_INFLUXDB_INIT_BUCKET=network-metrics
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=packet-analyzer-token-123
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./configs/grafana:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-influxdb-datasource
+    depends_on:
+      - influxdb
+    restart: unless-stopped
+
+  wireshark:
+    image: lscr.io/linuxserver/wireshark:latest
+    container_name: wireshark
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./data/wireshark:/config
+      - ./data/captures:/captures:ro
+      - ./wireshark-integration:/wireshark-integration:ro
+    ports:
+      - "3001:3000"
+    cap_add:
+      - NET_ADMIN
+    network_mode: host
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  influxdb_data:
+  influxdb_config:
+  grafana_data:
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
