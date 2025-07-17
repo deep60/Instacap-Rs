@@ -650,6 +650,303 @@ fn current_timestamp() -> u64 {
         .as_secs()
 }
 
+// Additional protocol analyzers
+struct ProtocolAnalyzer {
+    http_analyzer: HttpAnalyzer,
+    dns_analyzer: DnsAnalyzer,
+    ftp_analyzer: FtpAnalyzer,
+    smtp_analyzer: SmtpAnalyzer,
+}
+
+struct HttpAnalyzer {
+    request_tracker: HashMap<String, Vec<HttpRequest>>,
+    response_codes: HashMap<u16, u64>,
+    suspicious_user_agents: Vec<String>,
+}
+
+struct HttpRequest {
+    timestamp: u64,
+    method: String,
+    url: String,
+    user_agent: String,
+    src_ip: String,
+}
+
+struct DnsAnalyzer {
+    query_tracker: HashMap<String, u64>,
+    suspicious_domains: Vec<String>,
+    dns_tunneling_detector: HashMap<String, u64>,
+}
+
+struct FtpAnalyzer {
+    login_attempts: HashMap<String, u64>,
+    file_transfers: Vec<FileTransfer>,
+}
+
+struct FileTransfer {
+    timestamp: u64,
+    src_ip: String,
+    filename: String,
+    size: u64,
+    direction: String,
+}
+
+struct SmtpAnalyzer {
+    email_volume: HashMap<String, u64>,
+    spam_indicators: Vec<String>,
+}
+
+impl NetworkAnalyzer {
+    // Enhanced deep packet inspection
+    fn deep_packet_inspection(&self, packet_info: &PacketInfo, payload: &[u8]) -> Result<()> {
+        match packet_info.protocol.as_str() {
+            "TCP" => {
+                match packet_info.dst_port {
+                    80 | 8080 | 443 => self.analyze_http_traffic(packet_info, payload)?,
+                    21 => self.analyze_ftp_traffic(packet_info, payload)?,
+                    25 | 587 => self.analyze_smtp_traffic(packet_info, payload)?,
+                    _ => {}
+                }
+            }
+            "UDP" => {
+                match packet_info.dst_port {
+                    53 => self.analyze_dns_traffic(packet_info, payload)?,
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    
+    fn analyze_http_traffic(&self, packet_info: &PacketInfo, payload: &[u8]) -> Result<()> {
+        if let Ok(http_data) = std::str::from_utf8(payload) {
+            // Check for HTTP methods
+            if http_data.starts_with("GET ") || http_data.starts_with("POST ") || 
+               http_data.starts_with("PUT ") || http_data.starts_with("DELETE ") {
+                
+                let lines: Vec<&str> = http_data.split('\n').collect();
+                if let Some(request_line) = lines.first() {
+                    let parts: Vec<&str> = request_line.split(' ').collect();
+                    if parts.len() >= 3 {
+                        let method = parts[0];
+                        let url = parts[1];
+                        
+                        // Check for suspicious patterns
+                        if self.is_suspicious_http_request(method, url) {
+                            let threat = ThreatIndicator {
+                                timestamp: current_timestamp(),
+                                threat_type: "SUSPICIOUS_HTTP".to_string(),
+                                severity: "MEDIUM".to_string(),
+                                src_ip: packet_info.src_ip.clone(),
+                                dst_ip: packet_info.dst_ip.clone(),
+                                src_port: packet_info.src_port,
+                                dst_port: packet_info.dst_port,
+                                protocol: "HTTP".to_string(),
+                                description: format!("Suspicious HTTP request: {} {}", method, url),
+                                confidence: 0.7,
+                            };
+                            
+                            warn!("Suspicious HTTP request detected: {} {}", method, url);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    
+    fn analyze_dns_traffic(&self, packet_info: &PacketInfo, payload: &[u8]) -> Result<()> {
+        // Simple DNS analysis - in production, use a proper DNS parser
+        if payload.len() > 12 { // Minimum DNS header size
+            // Check for DNS tunneling (unusually large DNS queries)
+            if payload.len() > 512 {
+                let alert = AnomalyAlert {
+                    timestamp: current_timestamp(),
+                    alert_type: "DNS_TUNNELING".to_string(),
+                    severity: "HIGH".to_string(),
+                    description: format!("Suspicious large DNS query: {} bytes", payload.len()),
+                    src_ip: Some(packet_info.src_ip.clone()),
+                    dst_ip: Some(packet_info.dst_ip.clone()),
+                    additional_info: HashMap::new(),
+                };
+                
+                warn!("Possible DNS tunneling detected: {} bytes", payload.len());
+            }
+        }
+        Ok(())
+    }
+    
+    fn analyze_ftp_traffic(&self, packet_info: &PacketInfo, payload: &[u8]) -> Result<()> {
+        if let Ok(ftp_data) = std::str::from_utf8(payload) {
+            // Check for FTP commands
+            if ftp_data.starts_with("USER ") || ftp_data.starts_with("PASS ") {
+                // Track login attempts
+                warn!("FTP login attempt from {}: {}", packet_info.src_ip, ftp_data.trim());
+            } else if ftp_data.starts_with("RETR ") || ftp_data.starts_with("STOR ") {
+                // Track file transfers
+                info!("FTP file transfer: {}", ftp_data.trim());
+            }
+        }
+        Ok(())
+    }
+    
+    fn analyze_smtp_traffic(&self, packet_info: &PacketInfo, payload: &[u8]) -> Result<()> {
+        if let Ok(smtp_data) = std::str::from_utf8(payload) {
+            // Check for SMTP commands and responses
+            if smtp_data.contains("MAIL FROM:") || smtp_data.contains("RCPT TO:") {
+                // Track email volume
+                info!("SMTP activity from {}: {}", packet_info.src_ip, smtp_data.trim());
+            }
+        }
+        Ok(())
+    }
+    
+    fn is_suspicious_http_request(&self, method: &str, url: &str) -> bool {
+        // Check for common attack patterns
+        let suspicious_patterns = [
+            "sql", "union", "select", "drop", "insert", "update", "delete",
+            "script", "alert", "onerror", "onload", "javascript:",
+            "../", "..\\", "/etc/passwd", "/proc/", "cmd.exe",
+            "powershell", "whoami", "netstat", "ipconfig",
+        ];
+        
+        let lower_url = url.to_lowercase();
+        suspicious_patterns.iter().any(|pattern| lower_url.contains(pattern))
+    }
+    
+    // Enhanced GeoIP analysis
+    fn analyze_geolocation(&self, packet_info: &PacketInfo) -> Result<()> {
+        // Simple geolocation analysis - in production, use a proper GeoIP database
+        if self.is_suspicious_geolocation(&packet_info.src_ip) {
+            let alert = AnomalyAlert {
+                timestamp: current_timestamp(),
+                alert_type: "SUSPICIOUS_GEOLOCATION".to_string(),
+                severity: "MEDIUM".to_string(),
+                description: format!("Traffic from suspicious geolocation: {}", packet_info.src_ip),
+                src_ip: Some(packet_info.src_ip.clone()),
+                dst_ip: Some(packet_info.dst_ip.clone()),
+                additional_info: HashMap::new(),
+            };
+            
+            warn!("Suspicious geolocation detected: {}", packet_info.src_ip);
+        }
+        Ok(())
+    }
+    
+    fn is_suspicious_geolocation(&self, ip: &str) -> bool {
+        // Check for private/local IPs first
+        if ip.starts_with("192.168.") || ip.starts_with("10.") || 
+           ip.starts_with("172.") || ip == "127.0.0.1" {
+            return false;
+        }
+        
+        // In production, check against GeoIP database for high-risk countries
+        // This is a simplified example
+        false
+    }
+    
+    // Network flow analysis
+    fn analyze_network_flows(&self) -> Result<()> {
+        let buffer = self.packet_buffer.lock().unwrap();
+        let mut flows: HashMap<String, Vec<&PacketInfo>> = HashMap::new();
+        
+        // Group packets by flow (src_ip:src_port -> dst_ip:dst_port)
+        for packet in buffer.iter() {
+            let flow_key = format!("{}:{}->{}:{}", 
+                                 packet.src_ip, packet.src_port,
+                                 packet.dst_ip, packet.dst_port);
+            flows.entry(flow_key).or_insert_with(Vec::new).push(packet);
+        }
+        
+        // Analyze each flow
+        for (flow_id, packets) in flows {
+            if packets.len() > 1000 {
+                warn!("High-volume flow detected: {} ({} packets)", flow_id, packets.len());
+            }
+            
+            // Check for beaconing behavior
+            if self.is_beaconing_behavior(&packets) {
+                warn!("Possible beaconing detected in flow: {}", flow_id);
+            }
+        }
+        
+        Ok(())
+    }
+    
+    fn is_beaconing_behavior(&self, packets: &[&PacketInfo]) -> bool {
+        if packets.len() < 10 {
+            return false;
+        }
+        
+        // Check for regular intervals between packets
+        let mut intervals = Vec::new();
+        for i in 1..packets.len() {
+            let interval = packets[i].timestamp - packets[i-1].timestamp;
+            intervals.push(interval);
+        }
+        
+        // Simple check for consistent intervals (beaconing pattern)
+        if intervals.len() > 5 {
+            let avg_interval = intervals.iter().sum::<u64>() / intervals.len() as u64;
+            let variance = intervals.iter()
+                .map(|&x| (x as i64 - avg_interval as i64).pow(2))
+                .sum::<i64>() / intervals.len() as i64;
+            
+            // Low variance indicates regular beaconing
+            variance < 100
+        } else {
+            false
+        }
+    }
+    
+    // Enhanced statistics and reporting
+    fn generate_security_report(&self) -> Result<String> {
+        let stats = self.traffic_stats.lock().unwrap();
+        let detector = self.anomaly_detector.lock().unwrap();
+        let threat_detector = self.threat_detector.lock().unwrap();
+        let perf_monitor = self.performance_monitor.lock().unwrap();
+        
+        let mut report = String::new();
+        report.push_str("=== NETWORK SECURITY REPORT ===\n\n");
+        
+        // Traffic overview
+        report.push_str(&format!("Traffic Overview:\n"));
+        report.push_str(&format!("- Total packets: {}\n", stats.total_packets));
+        report.push_str(&format!("- Total bytes: {}\n", stats.total_bytes));
+        report.push_str(&format!("- Protocols: {:?}\n", stats.protocol_distribution));
+        report.push_str(&format!("- Top ports: {:?}\n", stats.port_activity));
+        
+        // Performance metrics
+        if !perf_monitor.latency_samples.is_empty() {
+            let avg_latency = perf_monitor.latency_samples.iter().sum::<f64>() / perf_monitor.latency_samples.len() as f64;
+            report.push_str(&format!("- Average latency: {:.2} ms\n", avg_latency));
+        }
+        
+        if !perf_monitor.throughput_samples.is_empty() {
+            let avg_throughput = perf_monitor.throughput_samples.iter().sum::<f64>() / perf_monitor.throughput_samples.len() as f64;
+            report.push_str(&format!("- Average throughput: {:.2} Mbps\n", avg_throughput));
+        }
+        
+        // Security events
+        report.push_str(&format!("\nSecurity Events:\n"));
+        report.push_str(&format!("- Suspicious IPs: {}\n", detector.suspicious_ips.len()));
+        report.push_str(&format!("- Port scan attempts: {}\n", detector.port_scan_tracker.len()));
+        report.push_str(&format!("- Connection attempts: {}\n", threat_detector.connection_tracker.len()));
+        
+        // Recommendations
+        report.push_str(&format!("\nRecommendations:\n"));
+        if detector.suspicious_ips.len() > 10 {
+            report.push_str("- Consider implementing IP-based filtering\n");
+        }
+        if detector.port_scan_tracker.len() > 5 {
+            report.push_str("- Review firewall rules for port scanning protection\n");
+        }
+        
+        Ok(report)
+    }
+}
+
 fn main() -> Result<()> {
     // Initialize logger
     env_logger::init();
@@ -665,17 +962,33 @@ fn main() -> Result<()> {
     info!("Anomaly window: {}s", args.anomaly_window);
     info!("Traffic threshold: {} packets/s", args.traffic_threshold);
     
+    // Display available network interfaces
+    info!("Available network interfaces:");
+    for device in Device::list()? {
+        info!("  - {} ({})", device.name, device.desc.unwrap_or("No description".to_string()));
+    }
+    
     // Create network analyzer
     let analyzer = NetworkAnalyzer::new(args)?;
     
     // Handle Ctrl+C gracefully
+    let analyzer_clone = Arc::new(analyzer);
+    let analyzer_signal = Arc::clone(&analyzer_clone);
+    
     ctrlc::set_handler(move || {
-        info!("Received Ctrl+C, shutting down gracefully...");
+        info!("Received Ctrl+C, generating final report...");
+        
+        // Generate and display final security report
+        if let Ok(report) = analyzer_signal.generate_security_report() {
+            println!("\n{}", report);
+        }
+        
+        info!("Shutting down gracefully...");
         std::process::exit(0);
     })?;
     
     // Start packet capture and analysis
-    analyzer.start_capture()?;
+    analyzer_clone.start_capture()?;
     
     Ok(())
 }
