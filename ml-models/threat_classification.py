@@ -1,25 +1,27 @@
 import numpy as np
 import pandas as pd
 import numpy.typing as npt
-
 from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder, RobustScaler
-from typing import Union
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.base import ClassifierMixin
+from typing import Dict, List, Tuple, Optional, Union, Any
+try:
+    from typing import Protocol
+except ImportError:
+    from typing_extensions import Protocol
 import joblib
 import logging
-from typing import Dict, List, Tuple, Optional, Union, Any
 import json
 from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
-
 # Common fixes for sklearn/numpy issues
 import sys
 import os
+
+ClassifierType = Union[VotingClassifier, RandomForestClassifier, GradientBoostingClassifier]
 
 class ThreatClassifier:
     """
@@ -31,12 +33,13 @@ class ThreatClassifier:
         self.logger = self._setup_logger()
         self.scaler: Optional[Union[StandardScaler, RobustScaler]] = StandardScaler()
         self.label_encoder: LabelEncoder = LabelEncoder()
-        self.model: Optional[Union[VotingClassifier, RandomForestClassifier, BaseEstimator]] = None
+        # Fix: Use proper classifier type
+        self.model: Optional[ClassifierType] = None
         self.feature_names: List[str] = []
         self.threat_categories = [
             'benign', 'malware', 'ddos', 'port_scan', 'intrusion', 
             'data_exfiltration', 'botnet', 'phishing', 'ransomware'
-            ]
+        ]
         
         if model_path:
             self.load_model(model_path)
@@ -48,18 +51,19 @@ class ThreatClassifier:
         logger = logging.getLogger('ThreatClassifier')
         logger.setLevel(logging.INFO)
         
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+        if not logger.handlers:  # Avoid duplicate handlers
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
         
         return logger
     
     def _create_ensemble_model(self):
         """Create an ensemble model combining multiple classifiers"""
-        from sklearn.ensemble import VotingClassifier
+        # from sklearn.ensemble import VotingClassifier
         
         # Individual classifiers
         rf_classifier = RandomForestClassifier(
@@ -68,18 +72,10 @@ class ThreatClassifier:
             random_state=42,
             n_jobs=-1
         )
-        
-        # gb_classifier = GradientBoostingClassifier(
-        #     n_estimators=100,
-        #     max_depth=6,
-        #     random_state=42
-        # )
-        
         # Ensemble voting classifier
         ensemble = VotingClassifier(
             estimators=[
                 ('rf', rf_classifier),
-                # ('gb', gb_classifier)
             ],
             voting='soft'
         )
@@ -89,10 +85,8 @@ class ThreatClassifier:
     def extract_features(self, packet_data: Dict) -> np.ndarray:
         """
         Extract relevant features from packet data for threat classification
-        
         Args:
             packet_data: Dictionary containing packet information
-            
         Returns:
             numpy array of extracted features
         """
@@ -202,7 +196,7 @@ class ThreatClassifier:
         #     features_array = np.where(np.isfinite(features_array), features_array, 0.0)
         
         return features_array
-    
+
     def prepare_training_data(self, dataset_path: str) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.int32]]:
         """
         Prepare training data from dataset
@@ -226,9 +220,6 @@ class ThreatClassifier:
             if df.empty:
                 raise ValueError("Dataset is empty")
             
-            # Debug: Print column names
-            self.logger.info(f"Dataset columns: {df.columns.tolist()}")
-            
             # Find label column (flexible naming)
             label_column = None
             possible_labels = ['label', 'Label', 'LABEL', 'target', 'Target', 'class', 'Class', 'attack_type', 'category']
@@ -243,23 +234,13 @@ class ThreatClassifier:
                 label_column = df.columns[-1]
                 self.logger.warning(f"No standard label column found, using last column: {label_column}")
             
-            self.logger.info(f"Using label column: {label_column}")
-            
             # Separate features and labels
             X = df.drop(columns=[label_column])
             y = df[label_column]
             
-            self.logger.info(f"Features shape: {X.shape}")
-            self.logger.info(f"Labels shape: {y.shape}")
-            self.logger.info(f"Unique labels: {y.unique()}")
-            
             # Store feature names
             self.feature_names = X.columns.tolist()
             
-            # Handle missing values and data types
-            self.logger.info("Cleaning feature data...")
-            
-            # Remove non-numeric columns except for specific ones we can encode
             numeric_cols = []
             for col in X.columns:
                 if X[col].dtype in ['int64', 'float64', 'int32', 'float32']:
@@ -272,27 +253,15 @@ class ThreatClassifier:
                     except:
                         self.logger.warning(f"Dropping non-numeric column: {col}")
             
-            # Keep only numeric columns
-            X = X[numeric_cols]
-            
-            # Handle missing values
-            X = X.fillna(0)
-            
-            # Handle infinite values
-            X = X.replace([np.inf, -np.inf], 0)
+            X = X[numeric_cols].fillna(0).replace([np.inf, -np.inf], 0)
             
             # Clean labels
-            self.logger.info("Cleaning label data...")
-            
-            # Remove rows with missing labels
+            # X = X.fillna(0)
             valid_indices = y.notna()
             X = X[valid_indices]
             y = y[valid_indices]
             
-            # Convert labels to string for consistency
             y = y.astype(str).str.strip().str.lower()
-            
-            # Remove empty or invalid labels
             valid_labels = y != ''
             X = X[valid_labels]
             y = y[valid_labels]
@@ -301,232 +270,120 @@ class ThreatClassifier:
             X = X.reset_index(drop=True)
             y = y.reset_index(drop=True)
             
-            self.logger.info(f"After cleaning - Features: {X.shape}, Labels: {y.shape}")
-            
-            # Convert to numpy arrays
+            # Convert to numpy arrays with proper type checking
             X_array = X.values.astype(np.float32)
-            
-            # Handle any remaining NaN or inf values
             X_array = np.nan_to_num(X_array, nan=0.0, posinf=0.0, neginf=0.0)
+
+            # Ensure proper array type for labels
+            y_labels_array = y.values   # Get pandas array first
+            y_encoded_raw = self.label_encoder.fit_transform(y_labels_array)
+
+            # convert to proper numpy array wit correct dtype
+            y_encoded = np.asarray(y_encoded_raw, dtype=np.int32)
             
-            # Initialize and fit label encoder
-            self.logger.info("Encoding labels...")
-            
-            # Ensure we have valid labels
-            if len(y) == 0:
-                raise ValueError("No valid labels found after cleaning")
-            
-            # Fit label encoder
-            try:
-                y_encoded = self.label_encoder.fit_transform(y)
-                self.logger.info(f"Label encoding successful. Classes: {self.label_encoder.classes_}")
-            except Exception as e:
-                self.logger.error(f"Label encoding failed: {e}")
-                raise ValueError(f"Failed to encode labels: {e}")
-            
-            # Final validation
-            if X_array.shape[0] != len(y_encoded):
-                raise ValueError(f"Shape mismatch: X={X_array.shape[0]}, y={len(y_encoded)}")
+            # Validation with proper array types
+            if X_array.shape[0] != y_encoded.shape[0]:
+                raise ValueError(f"Shape mismatch: X={X_array.shape[0]}, y={y_encoded.shape[0]}")
             
             if X_array.shape[0] == 0:
                 raise ValueError("No valid samples found in dataset")
             
-            if X_array.shape[1] == 0:
-                raise ValueError("No valid features found in dataset")
-            
             self.logger.info(f"Final dataset: {X_array.shape[0]} samples, {X_array.shape[1]} features")
-            self.logger.info(f"Threat categories: {self.label_encoder.classes_}")
-            self.logger.info(f"Label distribution: {np.bincount(y_encoded)}")
-            
-            return X_array.astype(np.float32), y_encoded.astype(np.int32)
+            self.logger.info(f"Classes: {self.label_encoder.classes_}")
+
+            return X_array, y_encoded
             
         except Exception as e:
             self.logger.error(f"Error preparing training data: {e}")
-            import traceback
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
             raise
-    
-    def train_model(self, X: npt.NDArray[np.float32], y: npt.NDArray[np.int32], test_size: float = 0.2):
+
+    def train_model(self, X: np.ndarray, y: np.ndarray, test_size: float = 0.2):
         """Train the threat classification model"""
         self.logger.info("Starting model training...")
         
         try:
-            # Validate input data
+            # Input Validation with proper types
             if X is None or y is None:
                 raise ValueError("X and y cannot be None")
             
+            # Ensure proper numpy arrays
             if not isinstance(X, np.ndarray):
-                X = np.array(X, dtype=np.float32)
-            
+                X = np.asarray(X, dtype=np.float32)
             if not isinstance(y, np.ndarray):
-                y = np.array(y)
+                y = np.asarray(y, dtype=np.int32)
             
-            if X.shape[0] == 0 or len(y) == 0:
+            if X.shape[0] == 0 or y.shape[0] == 0:
                 raise ValueError("Empty training data")
             
-            if X.shape[0] != len(y):
-                raise ValueError(f"Feature matrix and labels have different lengths: X={X.shape[0]}, y={len(y)}")
-            
-            if X.shape[1] == 0:
-                raise ValueError("No features in training data")
-            
-            self.logger.info(f"Training data shape: X={X.shape}, y={y.shape}")
+            if X.shape[0] != y.shape[0]:
+                raise ValueError(f"Feature matrix and labels have different lengths: X={X.shape[0]}, y={y.shape[0]}")
             
             # Check for valid numeric data
             if not np.all(np.isfinite(X)):
                 self.logger.warning("Non-finite values in features, cleaning data")
                 X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
             
-            # Check for constant features (all same value)
-            constant_features = []
-            for i in range(X.shape[1]):
-                if np.all(X[:, i] == X[0, i]):
-                    constant_features.append(i)
-            
-            if constant_features:
-                self.logger.warning(f"Found {len(constant_features)} constant features")
-                # Remove constant features
-                X = np.delete(X, constant_features, axis=1)
-                if hasattr(self, 'feature_names') and self.feature_names:
-                    self.feature_names = [name for i, name in enumerate(self.feature_names) if i not in constant_features]
-            
-            # Ensure minimum samples for splitting
-            min_samples = max(10, len(np.unique(y)) * 2)  # At least 2 samples per class
-            if X.shape[0] < min_samples:
-                self.logger.warning(f"Very small dataset ({X.shape[0]} samples), consider using more data")
-                test_size = 0.1  # Use smaller test size
-            
-            # Check class distribution
-            unique_classes, class_counts = np.unique(y, return_counts=True)
-            self.logger.info(f"Class distribution: {dict(zip(unique_classes, class_counts))}")
-            
-            # Ensure each class has at least 2 samples for stratified split
-            min_class_count = min(class_counts)
-            if min_class_count < 2:
-                self.logger.warning("Some classes have only 1 sample, using random split instead of stratified")
-                stratify = None
-            else:
-                stratify = y
-            
             # Split data
             try:
                 X_train, X_test, y_train, y_test = train_test_split(
-                    X, y, test_size=test_size, random_state=42, stratify=stratify
+                    X, y, test_size=test_size, random_state=42, stratify=y
                 )
-                self.logger.info(f"Data split: train={X_train.shape[0]}, test={X_test.shape[0]}")
+                # self.logger.info(f"Data split: train={X_train.shape[0]}, test={X_test.shape[0]}")
             except Exception as e:
                 self.logger.warning(f"Stratified split failed: {e}, using random split")
                 X_train, X_test, y_train, y_test = train_test_split(
                     X, y, test_size=test_size, random_state=42
                 )
             
-            # Initialize scaler if not already done
-            if self.scaler is None:
-                self.scaler = StandardScaler()
-            
             # Scale features
-            try:
-                self.logger.info("Scaling features...")
-                X_train_scaled = self.scaler.fit_transform(X_train)
-                X_test_scaled = self.scaler.transform(X_test)
-                
-                # Check for scaling issues
-                if not np.all(np.isfinite(X_train_scaled)) or not np.all(np.isfinite(X_test_scaled)):
-                raise ValueError("Scaling produced non-finite values")
-                
-            except Exception as e:
-                self.logger.error(f"Error in feature scaling: {e}")
-                # Fallback to robust scaler
-                self.scaler = RobustScaler()
+            if self.scaler is not None:
                 try:
                     X_train_scaled = self.scaler.fit_transform(X_train)
                     X_test_scaled = self.scaler.transform(X_test)
+                
                 except Exception as e:
-                    self.logger.warning(f"Robust scaling also failed: {e}, using original features")
+                    self.logger.warning(f"Scaling failed: {e}, using original features")
                     X_train_scaled = X_train
                     X_test_scaled = X_test
-                    self.scaler = None
+            else:
+                X_train_scaled = X_train
+                X_test_scaled = X_test
             
-            # Initialize model if not already done
-            if not hasattr(self, 'model') or self.model is None:
+            
+            # Initialize model if needed
+            if self.model is None:
                 self.model = self._create_ensemble_model()
             
-            # Train model
-            self.logger.info("Training model...")
-            try:
-                if hasattr(self.model, 'fit'):
-                    self.model.fit(X_train_scaled, y_train)  # Fixed: use X_train_scaled not X_test_scaled
-                    self.logger.info("Model training completed successfully")
-                else:
-                    raise ValueError("Model does not have a fit method")
-            except Exception as e:
-                self.logger.error(f"Model training failed: {e}")
-                # Try with simpler model
-                self.logger.info("Trying with simpler Random Forest model...")
-                from sklearn.ensemble import RandomForestClassifier
-                self.model = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1)
-                if hasattr(self.model, 'fit'):
-                    self.model.fit(X_train_scaled, y_train)
-                else:
-                    raise ValueError("Random Forest model does not have fit method")
+            # Explicit type checking and methods calls
+            if not hasattr(self.model, 'fit'):
+                raise ValueError("Model does not have fit method")
             
-            # Evaluate model
-            try:
-                if hasattr(self.model, 'score'):
-                    train_score = self.model.score(X_train_scaled, y_train)
-                    test_score = self.model.score(X_test_scaled, y_test) 
-                else:
-                    train_score = 0.0
-                    test_score = 0.0
-                
-                self.logger.info(f"Training accuracy: {train_score:.4f}")
-                self.logger.info(f"Test accuracy: {test_score:.4f}")
-                
-                # Detailed evaluation
-                if hasattr(self.model, 'predict'):
-                    y_pred = self.model.predict(X_test_scaled)
-                else:
-                    y_pred = np.zeros(len(y_test))
-                
-                # Get class names for report
-                if hasattr(self, 'label_encoder') and self.label_encoder is not None and hasattr(self.label_encoder, 'classes_'):
-                    target_names = self.label_encoder.classes_
-                else:
-                    target_names = [str(i) for i in unique_classes]
-                
-                self.logger.info("\nClassification Report:")
-                report = classification_report(
-                    y_test, y_pred, 
-                    target_names=target_names,
-                    zero_division=0,
-                    output_dict=False
-                )
-                self.logger.info(report)
-                
-                return {
-                    'train_accuracy': train_score,
-                    'test_accuracy': test_score,
-                    'model': self.model,
-                    'scaler': self.scaler,
-                    'feature_count': X_train_scaled.shape[1],
-                    'sample_count': X_train_scaled.shape[0],
-                    'classes': unique_classes.tolist()
-                }
-                
-            except Exception as e:
-                self.logger.warning(f"Could not generate full evaluation: {e}")
-                return {
-                    'train_accuracy': 0.0,
-                    'test_accuracy': 0.0,
-                    'model': self.model,
-                    'scaler': self.scaler,
-                    'error': str(e)
-                }
+            # Train model - Fix: Add type guard for model methods
+            self.model.fit(X_train_scaled, y_train)
+            self.logger.info("Model training completed successfully")
+
+            # Evaluate model with proper method checks
+            train_score = 0.0
+            test_score = 0.0
             
+            if hasattr(self.model, 'score'):
+                train_score = self.model.score(X_train_scaled, y_train)
+                test_score = self.model.score(X_test_scaled, y_test)
+
+            self.logger.info(f"Training accuracy: {train_score:.4f}")
+            self.logger.info(f"Test accuracy: {test_score:.4f}")
+
+            return {
+                'train_accuracy': train_score,
+                'test_accuracy': test_score,
+                'model': self.model,
+                'scaler': self.scaler,
+                'feature_count': X_train_scaled.shape[1],
+                'sample_count': X_train_scaled.shape[0]
+            }
+        
         except Exception as e:
             self.logger.error(f"Error training model: {e}")
-            import traceback
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
             raise
         
     def predict_threat(self, packet_data: Dict) -> Dict:
@@ -786,30 +643,7 @@ class ThreatClassifier:
             self.logger.error(f"Error updating model: {e}")
             raise
 
-    @staticmethod
-    def validate_model_state(classifier: ThreatClassifier) -> bool:
-        """Validate that classifier is in a valid state for prediction"""
-        if classifier.model is None:
-            return False
-        if classifier.label_encoder is None:
-            return False
-        if not hasattr(classifier.label_encoder, 'classes_'):
-            return False
-        return True
-    
-    @staticmethod
-    def safe_predict(classifier: ThreatClassifier, packet_data: Dict) -> Dict:
-        """Safe wrapper for prediction that handles all edges cases"""
-        if not ThreatClassifier.validate_model_state(classifier):
-            return {
-                'threat_category': 'unknown',
-                'confidence': 0.0,
-                'probabilities': {},
-                'timestamp': datetime.now().isoformat(),
-                'is_malicious': False,
-                'error': 'Model not in valid state'
-            }
-        return classifier.predict_threat(packet_data)
+
 
 # Example usage and testing
 if __name__ == "__main__":
@@ -837,7 +671,7 @@ if __name__ == "__main__":
     try:
         # Train model with synthetic data
         print("Training model with synthetic data...")
-        result = classifier.train_model(X_synthetic, y_encoded, test_size=0.2)
+        result = classifier.train_model(X_synthetic, y_encoded ,test_size=0.2)
         print(f"Training completed successfully!")
         print(f"Train accuracy: {result['train_accuracy']:.4f}")
         print(f"Test accuracy: {result['test_accuracy']:.4f}")
