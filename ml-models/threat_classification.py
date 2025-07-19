@@ -2,15 +2,11 @@ import numpy as np
 import pandas as pd
 import numpy.typing as npt
 from sklearn.ensemble import VotingClassifier, RandomForestClassifier, GradientBoostingClassifier
-from sklearn.base import BaseEstimator, ClassifierMixin
+# from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder, RobustScaler
 from sklearn.metrics import classification_report, confusion_matrix
 from typing import Dict, List, Tuple, Optional, Union, Any
-try:
-    from typing import Protocol
-except ImportError:
-    from typing_extensions import Protocol
 import joblib
 import logging
 import json
@@ -275,7 +271,7 @@ class ThreatClassifier:
             X_array = np.nan_to_num(X_array, nan=0.0, posinf=0.0, neginf=0.0)
 
             # Ensure proper array type for labels
-            y_labels_array = y.values   # Get pandas array first
+            y_labels_array = np.array(y.tolist(), dtype=str)   # Get pandas array first
             y_encoded_raw = self.label_encoder.fit_transform(y_labels_array)
 
             # convert to proper numpy array wit correct dtype
@@ -310,7 +306,8 @@ class ThreatClassifier:
             if not isinstance(X, np.ndarray):
                 X = np.asarray(X, dtype=np.float32)
             if not isinstance(y, np.ndarray):
-                y = np.asarray(y, dtype=np.int32)
+                # y = np.asarray(y, dtype=np.int32)
+                y = np.asarray(y)
             
             if X.shape[0] == 0 or y.shape[0] == 0:
                 raise ValueError("Empty training data")
@@ -666,7 +663,7 @@ if __name__ == "__main__":
     y_synthetic = np.random.choice(labels, size=n_samples)
     
     # Convert to format expected by label encoder
-    y_encoded = classifier.label_encoder.fit_transform(y_synthetic)
+    y_encoded = np.array(classifier.label_encoder.fit_transform(y_synthetic), dtype=np.int32)
     
     try:
         # Train model with synthetic data
