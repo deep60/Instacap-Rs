@@ -1,0 +1,18 @@
+{
+    "redis_url": "redis://localhost:6379",
+    "model_paths": {
+        "anomaly": "models/anomaly_model.pkl",
+        "threat": "models/threat_model.pkl",
+        "performance": "models/performance_model.pkl"
+    },
+    "feature_engineering": {
+        "window_size": 100,
+        "sliding_window": true,
+        "normalize_features": true
+    },
+    "thresholds": {
+        "anomaly_threshold": 0.5,
+        "threat_threshold": 0.7,
+        "performance_threshold": 0.6
+    }
+}
