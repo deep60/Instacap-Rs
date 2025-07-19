@@ -77,37 +77,39 @@ Application performance monitoring
 Infrastructure health tracking
 Capacity planning
 
+
 ## Project Directory Structure
 
 ```plaintext
 Instacap-RS/
-├── docker-compose.yml
-├── packet-capture/
+├── docker-compose.yml -Runs all components (Rust services, Python ML server, etc.) in isolated containers.
+├── packet-capture/ - Captures live network traffic using low-level packet sniffing (like libpcap).
 │   ├── Dockerfile
 │   ├── src/
 │   │   ├── main.rs
-│   │   ├── packet_capture.rs
-│   │   ├── protocol_parser.rs
-│   │   ├── deep_inspection.rs
-│   │   └── performance_metrics.rs
+│   │   ├── packet_capture.rs - Core logic to sniff packets from interfaces
+│   │   ├── protocol_parser.rs - Decodes Ethernet, IP, TCP/UDP, HTTP, etc.
+│   │   ├── deep_inspection.rs - Payload analysis (e.g., detecting signatures or anomalies).
+│   │   └── performance_metrics.rs - Measures network KPIs — latency, jitter, throughput.
 │   └── Cargo.toml
-├── analysis-engine/
+├── analysis-engine/ - Analyzes packets for security and performance issues.
 │   ├── src/
 │   │   ├── main.rs
-│   │   ├── anomaly_detector.rs
-│   │   ├── threat_detector.rs
-│   │   ├── traffic_analyzer.rs
-│   │   └── alert_manager.rs
+│   │   ├── anomaly_detector.rs - Checks for unusual patterns (spikes, rare protocols).
+│   │   ├── threat_detector.rs - Signature/rule-based detection (malware, port scans).
+│   │   ├── traffic_analyzer.rs -  Summarizes traffic by IP, protocol, etc.
+│   │   └── alert_manager.rs - Triggers alerts/logs when rules or thresholds are violated.
 │   └── Cargo.toml
-├── ml-models/
-│   ├── anomaly_detection.py
-│   ├── threat_classification.py
-│   ├── performance_predictor.py
-│   └── model_server.py
-├── wireshark-integration/
-│   ├── capture_filters.lua
-│   └── custom_dissectors.lua
+├── ml-models/ -  Machine learning models for intelligent anomaly/threat detection.
+│   ├── anomaly_detection.py - Detects statistical anomalies.
+│   ├── threat_classification.py - Classifies threats (DDoS, scan, exfiltration).
+│   ├── performance_predictor.py - Predicts network degradation.
+│   └── model_server.py - Exposes ML models via an API (e.g., using FastAPI or Flask).
+├── wireshark-integration/ -  Custom filters and dissectors in Wireshark for deeper visualization.
+│   ├── capture_filters.lua - Predefined capture rules.
+│   └── custom_dissectors.lua - Protocol dissection to visualize custom/unknown protocols.
 └── configs/
-    ├── capture.conf
-    ├── detection_rules.yaml
-    └── thresholds.json
+    ├── capture.conf - Interfaces and filters for capture.
+    ├── detection_rules.yaml - Rules for threat/anomaly detection.
+    └── thresholds.json - Performance thresholds for alerts.
+
