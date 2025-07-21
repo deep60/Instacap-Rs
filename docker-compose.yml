@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   packet-capture:
     build:
-      context: ./insta-capture
+      context: ./packet-capture
       dockerfile: Dockerfile
     container_name: packet-capture
     privileged: true

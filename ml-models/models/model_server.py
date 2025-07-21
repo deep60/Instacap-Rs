@@ -550,7 +550,7 @@ def main():
     uvicorn.run(
         server.app,
         host="0.0.0.0",
-        port=8000,
+        port=8082,
         log_level="info",
         access_log=True,
         workers=1        # keep as 1 for shared state
