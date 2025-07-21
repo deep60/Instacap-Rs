@@ -68,3 +68,71 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+
+Instacap-Rs-frontend/
+├── public/
+│   ├── index.html
+│   ├── manifest.json
+│   └── favicon.ico
+├── src/
+│   ├── components/
+│   │   ├── Dashboard/
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── StatsGrid.jsx
+│   │   │   ├── TrafficChart.jsx
+│   │   │   └── AlertsPanel.jsx
+│   │   ├── PacketAnalysis/
+│   │   │   ├── PacketTable.jsx
+│   │   │   ├── PacketFilters.jsx
+│   │   │   └── PacketDetails.jsx
+│   │   ├── ThreatDetection/
+│   │   │   ├── ThreatDashboard.jsx
+│   │   │   ├── ThreatList.jsx
+│   │   │   └── ThreatDetails.jsx
+│   │   ├── Performance/
+│   │   │   ├── PerformanceMetrics.jsx
+│   │   │   ├── LatencyChart.jsx
+│   │   │   └── BandwidthChart.jsx
+│   │   ├── Protocol/
+│   │   │   ├── ProtocolAnalysis.jsx
+│   │   │   ├── ProtocolChart.jsx
+│   │   │   └── ProtocolDetails.jsx
+│   │   ├── Common/
+│   │   │   ├── Header.jsx
+│   │   │   ├── Navigation.jsx
+│   │   │   ├── StatCard.jsx
+│   │   │   ├── AlertItem.jsx
+│   │   │   └── LoadingSpinner.jsx
+│   │   └── Layout/
+│   │       ├── MainLayout.jsx
+│   │       └── Sidebar.jsx
+│   ├── services/
+│   │   ├── api.js
+│   │   ├── websocket.js
+│   │   ├── packetService.js
+│   │   ├── threatService.js
+│   │   └── analyticsService.js
+│   ├── hooks/
+│   │   ├── useWebSocket.js
+│   │   ├── usePacketData.js
+│   │   ├── useThreatDetection.js
+│   │   └── useRealTimeUpdates.js
+│   ├── utils/
+│   │   ├── constants.js
+│   │   ├── helpers.js
+│   │   ├── formatters.js
+│   │   └── validators.js
+│   ├── styles/
+│   │   ├── globals.css
+│   │   ├── components.css
+│   │   └── tailwind.css
+│   ├── App.jsx
+│   ├── index.js
+│   └── reportWebVitals.js
+├── package.json
+├── tailwind.config.js
+├── postcss.config.js
+├── .env.example
+├── .gitignore
+└── README.md
