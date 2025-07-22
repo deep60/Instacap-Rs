@@ -1,29 +1,36 @@
 import React from 'react';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 
-const StatCard = ({ title, value, icon: Icon, trend, color = 'blue' }) => {
+const StatCard = ({ title, value, change, trend, icon: Icon, color }) => {
   const colorClasses = {
-    blue: 'bg-blue-500',
-    green: 'bg-green-500',
-    red: 'bg-red-500',
-    yellow: 'bg-yellow-500',
-    purple: 'bg-purple-500'
+    blue: 'bg-blue-100 text-blue-600',
+    red: 'bg-red-100 text-red-600',
+    green: 'bg-green-100 text-green-600',
+    purple: 'bg-purple-100 text-purple-600',
+    yellow: 'bg-yellow-100 text-yellow-600'
   };
 
+  const trendColor = trend === 'up' ? 'text-green-600' : 'text-red-600';
+  const TrendIcon = trend === 'up' ? TrendingUp : TrendingDown;
+
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-600">{title}</p>
-          <p className="text-2xl font-bold text-slate-900">{value}</p>
-          {trend !== undefined && (
-            <p className={`text-sm ${trend > 0 ? 'text-green-600' : trend < 0 ? 'text-red-600' : 'text-slate-600'}`}>
-              {trend > 0 ? '+' : ''}{trend}% from last hour
-            </p>
-          )}
+        <div className="flex-1">
+          <p className="text-sm text-gray-600 mb-1">{title}</p>
+          <p className="text-2xl font-bold text-gray-900">{value}</p>
         </div>
-        <div className={`${colorClasses[color]} p-3 rounded-full`}>
-          <Icon className="w-6 h-6 text-white" />
+        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${colorClasses[color]}`}>
+          <Icon className="w-6 h-6" />
         </div>
+      </div>
+      
+      <div className="flex items-center mt-4 space-x-2">
+        <div className={`flex items-center space-x-1 ${trendColor}`}>
+          <TrendIcon className="w-4 h-4" />
+          <span className="text-sm font-medium">{change}</span>
+        </div>
+        <span className="text-sm text-gray-500">from last hour</span>
       </div>
     </div>
   );

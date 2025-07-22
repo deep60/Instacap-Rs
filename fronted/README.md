@@ -1,11 +1,18 @@
-# Getting Started with Create React App
+# 📊 Packet Analyzer Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This is the **React-based dashboard** for the `packet-analyzer` system. It provides real-time visibility into network activity, anomalies, threats, and performance metrics collected from the backend services.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## 🚀 Features
 
+- 📡 Live packet statistics (protocol distribution, volume)
+- ⚠️ Real-time alerts from anomaly/threat detection engine
+- 📈 Visual performance monitoring (latency, jitter, throughput)
+- 🧠 Communicates with backend (Rust & Python services)
+- 🧰 Built with `React`, `TailwindCSS`, `Recharts`, and `lucide-react`
+
+---
 #### `npm start`
 
 #### `npm test`
