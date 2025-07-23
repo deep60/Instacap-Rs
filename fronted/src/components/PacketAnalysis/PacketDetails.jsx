@@ -1,179 +1,397 @@
-import React from 'react';
-import { X, Clock, MapPin, Shield, Activity } from 'lucide-react';
+  import React, { useState, useEffect } from 'react';
+  import { 
+    Clock, 
+    Network, 
+    Shield, 
+    Eye, 
+    Copy, 
+    Download, 
+    ChevronDown, 
+    ChevronRight,
+    AlertTriangle,
+    Info,
+    Zap,
+    Globe
+  } from 'lucide-react';
 
-const PacketDetails = ({ packet, onClose }) => {
-  if (!packet) return null;
+  const PacketDetails = ({ packet, onClose }) => {
+    const [expandedSections, setExpandedSections] = useState({
+      headers: true,
+      payload: false,
+      analysis: true,
+      flow: true
+    });
+    const [selectedTab, setSelectedTab] = useState('overview');
 
-  const formatBytes = (bytes) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const getStatusColor = (status) => {
-    return status === 'suspicious' 
-      ? 'bg-red-100 text-red-800' 
-      : 'bg-green-100 text-green-800';
-  };
-
-  const getProtocolColor = (protocol) => {
-    const colors = {
-      'HTTPS': 'bg-green-100 text-green-800',
-      'HTTP': 'bg-blue-100 text-blue-800',
-      'DNS': 'bg-purple-100 text-purple-800',
-      'SSH': 'bg-yellow-100 text-yellow-800',
-      'TCP': 'bg-indigo-100 text-indigo-800',
-      'UDP': 'bg-orange-100 text-orange-800'
+    // Toggle section expansion
+    const toggleSection = (section) => {
+      setExpandedSections(prev => ({
+        ...prev,
+        [section]: !prev[section]
+      }));
     };
-    return colors[protocol] || 'bg-gray-100 text-gray-800';
-  };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">Packet Details</h2>
-            <p className="text-sm text-gray-500">ID: {packet.id}</p>
+    // Copy to clipboard function
+    const copyToClipboard = (text) => {
+      navigator.clipboard.writeText(text);
+      // Could add a toast notification here
+    };
+
+    // Format bytes to hex view
+    const formatHexView = (data) => {
+      if (!data) return '';
+      const bytes = Array.from(data);
+      let hexView = '';
+      let asciiView = '';
+      
+      for (let i = 0; i < bytes.length; i += 16) {
+        const hexLine = bytes.slice(i, i + 16)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join(' ');
+        const asciiLine = bytes.slice(i, i + 16)
+          .map(b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.')
+          .join('');
+        
+        hexView += `${i.toString(16).padStart(4, '0')}: ${hexLine.padEnd(47, ' ')} | ${asciiLine}\n`;
+      }
+      
+      return hexView;
+    };
+
+    // Get threat level color
+    const getThreatLevelColor = (level) => {
+      switch (level?.toLowerCase()) {
+        case 'critical': return 'text-red-600 bg-red-100';
+        case 'high': return 'text-orange-600 bg-orange-100';
+        case 'medium': return 'text-yellow-600 bg-yellow-100';
+        case 'low': return 'text-blue-600 bg-blue-100';
+        default: return 'text-green-600 bg-green-100';
+      }
+    };
+
+    if (!packet) {
+      return (
+        <div className="flex items-center justify-center h-64 text-gray-500">
+          <div className="text-center">
+            <Network className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>Select a packet to view details</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-lg shadow-lg border border-gray-200 h-full flex flex-col">
+        {/* Header */}
+        <div className="border-b border-gray-200 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Network className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Packet #{packet.id || 'N/A'}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {packet.protocol} • {packet.length} bytes
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => copyToClipboard(JSON.stringify(packet, null, 2))}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Copy className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => {/* Download logic */}}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+              {onClose && (
+                <button
+                  onClick={onClose}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-4">
+            {[
+              { id: 'overview', label: 'Overview', icon: Info },
+              { id: 'headers', label: 'Headers', icon: Eye },
+              { id: 'payload', label: 'Payload', icon: Zap },
+              { id: 'analysis', label: 'Analysis', icon: Shield }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setSelectedTab(tab.id)}
+                className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  selectedTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <tab.icon className="h-4 w-4" />
+                  <span>{tab.label}</span>
+                </div>
+              </button>
+            ))}
+          </nav>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Basic Info */}
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Source</h3>
-                <div className="flex items-center space-x-2">
-                  <MapPin className="w-4 h-4 text-blue-500" />
-                  <span className="font-mono text-sm">{packet.source}:{packet.port}</span>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Protocol</h3>
-                <span className={`px-2 py-1 rounded text-xs font-medium ${getProtocolColor(packet.protocol)}`}>
-                  {packet.protocol}
-                </span>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Size</h3>
-                <div className="flex items-center space-x-2">
-                  <Activity className="w-4 h-4 text-green-500" />
-                  <span>{formatBytes(packet.size)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Destination</h3>
-                <div className="flex items-center space-x-2">
-                  <MapPin className="w-4 h-4 text-red-500" />
-                  <span className="font-mono text-sm">{packet.destination}:{packet.destinationPort || packet.port}</span>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Status</h3>
-                <div className="flex items-center space-x-2">
-                  <Shield className="w-4 h-4" />
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(packet.status)}`}>
-                    {packet.status}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Timestamp</h3>
-                <div className="flex items-center space-x-2">
-                  <Clock className="w-4 h-4 text-purple-500" />
-                  <span>{new Date(packet.timestamp).toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Additional Details */}
-          <div className="border-t border-gray-200 pt-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Additional Information</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex-1 overflow-y-auto p-4">
+          {selectedTab === 'overview' && (
+            <div className="space-y-6">
+              {/* Basic Info */}
               <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-700 mb-2">Network Details</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">TTL:</span>
-                    <span>{packet.ttl || '64'}</span>
+                <h4 className="font-medium text-gray-900 mb-3">Basic Information</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-sm text-gray-500">Timestamp</span>
+                    <p className="font-mono text-sm">
+                      {packet.timestamp ? new Date(packet.timestamp).toLocaleString() : 'N/A'}
+                    </p>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Flags:</span>
-                    <span>{packet.flags || 'PSH, ACK'}</span>
+                  <div>
+                    <span className="text-sm text-gray-500">Protocol</span>
+                    <p className="font-mono text-sm">{packet.protocol || 'Unknown'}</p>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Window Size:</span>
-                    <span>{packet.windowSize || '65535'}</span>
+                  <div>
+                    <span className="text-sm text-gray-500">Length</span>
+                    <p className="font-mono text-sm">{packet.length || 0} bytes</p>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-500">TTL</span>
+                    <p className="font-mono text-sm">{packet.ttl || 'N/A'}</p>
                   </div>
                 </div>
               </div>
 
+              {/* Network Info */}
               <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-700 mb-2">Security Analysis</h4>
-                <div className="space-y-2 text-sm">
+                <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+                  <Globe className="h-4 w-4 mr-2" />
+                  Network Information
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-white rounded border">
+                    <div>
+                      <span className="text-sm text-gray-500">Source</span>
+                      <p className="font-mono text-sm font-medium">
+                        {packet.src_ip || 'N/A'}:{packet.src_port || 'N/A'}
+                      </p>
+                    </div>
+                    <div className="text-gray-400">→</div>
+                    <div>
+                      <span className="text-sm text-gray-500">Destination</span>
+                      <p className="font-mono text-sm font-medium">
+                        {packet.dst_ip || 'N/A'}:{packet.dst_port || 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Threat Analysis */}
+              {packet.threat_level && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+                    <AlertTriangle className="h-4 w-4 mr-2" />
+                    Threat Analysis
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">Threat Level</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getThreatLevelColor(packet.threat_level)}`}>
+                        {packet.threat_level?.toUpperCase() || 'SAFE'}
+                      </span>
+                    </div>
+                    {packet.threat_indicators && (
+                      <div>
+                        <span className="text-sm text-gray-500">Indicators</span>
+                        <div className="mt-1 space-y-1">
+                          {packet.threat_indicators.map((indicator, index) => (
+                            <div key={index} className="text-sm bg-white p-2 rounded border">
+                              {indicator}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedTab === 'headers' && (
+            <div className="space-y-4">
+              {/* Layer Headers */}
+              {['ethernet', 'ip', 'tcp', 'udp', 'application'].map(layer => {
+                if (!packet.headers?.[layer]) return null;
+                
+                return (
+                  <div key={layer} className="border rounded-lg">
+                    <button
+                      onClick={() => toggleSection(`${layer}_header`)}
+                      className="w-full px-4 py-3 text-left flex items-center justify-between hover:bg-gray-50"
+                    >
+                      <span className="font-medium capitalize">{layer} Header</span>
+                      {expandedSections[`${layer}_header`] ? 
+                        <ChevronDown className="h-4 w-4" /> : 
+                        <ChevronRight className="h-4 w-4" />
+                      }
+                    </button>
+                    {expandedSections[`${layer}_header`] && (
+                      <div className="px-4 pb-4 border-t bg-gray-50">
+                        <div className="grid grid-cols-2 gap-4 mt-3">
+                          {Object.entries(packet.headers[layer]).map(([key, value]) => (
+                            <div key={key} className="bg-white p-2 rounded border">
+                              <span className="text-xs text-gray-500 uppercase">{key}</span>
+                              <p className="font-mono text-sm">{String(value)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {selectedTab === 'payload' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-gray-900">Packet Payload</h4>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => copyToClipboard(packet.payload || '')}
+                    className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                  >
+                    Copy Raw
+                  </button>
+                </div>
+              </div>
+              
+              {packet.payload ? (
+                <div className="space-y-4">
+                  {/* Hex View */}
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-700 mb-2">Hex View</h5>
+                    <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-xs overflow-x-auto">
+                      <pre>{formatHexView(packet.payload)}</pre>
+                    </div>
+                  </div>
+                  
+                  {/* ASCII View */}
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-700 mb-2">ASCII View</h5>
+                    <div className="bg-gray-100 p-4 rounded-lg font-mono text-sm">
+                      <pre>{packet.payload_ascii || 'No ASCII representation available'}</pre>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Zap className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No payload data available</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedTab === 'analysis' && (
+            <div className="space-y-6">
+              {/* Protocol Analysis */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 mb-3">Protocol Analysis</h4>
+                <div className="space-y-3">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Risk Score:</span>
-                    <span className={packet.status === 'suspicious' ? 'text-red-600' : 'text-green-600'}>
-                      {packet.status === 'suspicious' ? 'High (85%)' : 'Low (15%)'}
+                    <span className="text-sm text-gray-500">Protocol Stack</span>
+                    <span className="font-mono text-sm">
+                      {packet.protocol_stack?.join(' → ') || packet.protocol}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Encrypted:</span>
-                    <span>{packet.protocol.includes('HTTPS') || packet.protocol.includes('SSH') ? 'Yes' : 'No'}</span>
+                    <span className="text-sm text-gray-500">Application</span>
+                    <span className="font-mono text-sm">
+                      {packet.application || 'Unknown'}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Geo Location:</span>
-                    <span>{packet.geoLocation || 'US-East'}</span>
+                  {packet.service && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-500">Service</span>
+                      <span className="font-mono text-sm">{packet.service}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Traffic Analysis */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 mb-3">Traffic Analysis</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white p-3 rounded border">
+                    <span className="text-sm text-gray-500">Bandwidth Usage</span>
+                    <p className="font-mono text-sm">{packet.bandwidth || 'N/A'}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded border">
+                    <span className="text-sm text-gray-500">Latency</span>
+                    <p className="font-mono text-sm">{packet.latency || 'N/A'}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded border">
+                    <span className="text-sm text-gray-500">Flow ID</span>
+                    <p className="font-mono text-sm">{packet.flow_id || 'N/A'}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded border">
+                    <span className="text-sm text-gray-500">Session ID</span>
+                    <p className="font-mono text-sm">{packet.session_id || 'N/A'}</p>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* Payload Preview */}
-          {packet.payload && (
-            <div className="border-t border-gray-200 pt-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Payload Preview</h3>
-              <div className="bg-gray-900 text-gray-100 p-4 rounded-lg font-mono text-sm overflow-x-auto">
-                <pre>{packet.payload}</pre>
-              </div>
+              {/* Anomaly Detection */}
+              {packet.anomalies && packet.anomalies.length > 0 && (
+                <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                  <h4 className="font-medium text-red-900 mb-3 flex items-center">
+                    <AlertTriangle className="h-4 w-4 mr-2" />
+                    Detected Anomalies
+                  </h4>
+                  <div className="space-y-2">
+                    {packet.anomalies.map((anomaly, index) => (
+                      <div key={index} className="bg-white p-3 rounded border border-red-200">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-sm text-red-900">{anomaly.type}</p>
+                            <p className="text-sm text-red-700">{anomaly.description}</p>
+                          </div>
+                          <span className="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
+                            {anomaly.severity}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="flex justify-end space-x-3 p-6 border-t border-gray-200">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Close
-          </button>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            Export Details
-          </button>
-        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
-export default PacketDetails;
+  export default PacketDetails;
