@@ -247,6 +247,29 @@ export const FILTERS = {
   }
 };
 
+// Time Ranges (for backward compatibility)
+export const TIME_RANGES = FILTERS.TIME_RANGES;
+
+// Protocol Colors for charts
+export const PROTOCOL_COLORS = {
+  TCP: '#3B82F6',
+  UDP: '#10B981',
+  ICMP: '#F59E0B',
+  HTTP: '#EF4444',
+  HTTPS: '#8B5CF6',
+  FTP: '#EC4899',
+  SMTP: '#6366F1',
+  DNS: '#14B8A6',
+  DHCP: '#F97316',
+  SSH: '#6B7280',
+  TELNET: '#9CA3AF',
+  SNMP: '#DC2626',
+  ARP: '#059669',
+  IPV4: '#7C3AED',
+  IPV6: '#DB2777',
+  OTHER: '#374151'
+};
+
 // Validation Constants
 export const VALIDATION = {
   IP_ADDRESS_REGEX: /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/,

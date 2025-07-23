@@ -1,9 +1,25 @@
 // services/performanceMetrics.js
-import { API_BASE_URL, API_ENDPOINTS } from '../utils/constants';
+import { API_CONFIG } from '../../utils/constants';
+
+// Define API endpoints for performance metrics
+const API_ENDPOINTS = {
+  PERFORMANCE: {
+    CURRENT: '/performance/current',
+    HISTORICAL: '/performance/historical',
+    LATENCY: '/performance/latency',
+    BANDWIDTH: '/performance/bandwidth',
+    PACKET_LOSS: '/performance/packet-loss',
+    THROUGHPUT: '/performance/throughput',
+    INTERFACES: '/performance/interfaces',
+    ALERTS: '/performance/alerts',
+    THRESHOLDS: '/performance/thresholds',
+    EXPORT: '/performance/export'
+  }
+};
 
 class PerformanceMetricsService {
   constructor() {
-    this.baseURL = API_BASE_URL;
+    this.baseURL = API_CONFIG.BASE_URL;
     this.cache = new Map();
     this.cacheTimeout = 30000; // 30 seconds cache
   }
