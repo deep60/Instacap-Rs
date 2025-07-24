@@ -1,372 +1,432 @@
-import { apiService } from './api';
+import api from './api';
+import { formatThreatData, calculateThreatSeverity, validateThreatResponse } from '../utils/formatters';
+
+// Threat severity levels
+export const THREAT_LEVELS = {
+  CRITICAL: 'critical',
+  HIGH: 'high',
+  MEDIUM: 'medium',
+  LOW: 'low',
+  INFO: 'info'
+};
+
+// Threat types
+export const THREAT_TYPES = {
+  MALWARE: 'malware',
+  INTRUSION: 'intrusion',
+  DDoS: 'ddos',
+  PORT_SCAN: 'port_scan',
+  DATA_EXFILTRATION: 'data_exfiltration',
+  BRUTE_FORCE: 'brute_force',
+  SUSPICIOUS_TRAFFIC: 'suspicious_traffic',
+  UNKNOWN: 'unknown'
+};
+
+// Threat status
+export const THREAT_STATUS = {
+  ACTIVE: 'active',
+  RESOLVED: 'resolved',
+  INVESTIGATING: 'investigating',
+  FALSE_POSITIVE: 'false_positive'
+};
 
 class ThreatService {
   constructor() {
-    this.threatTypes = [
-      'DDoS Attack',
-      'Port Scan',
-      'Malware Communication',
-      'Suspicious Traffic',
-      'Data Exfiltration',
-      'Brute Force Attack',
-      'SQL Injection',
-      'Cross-Site Scripting',
-      'DNS Tunneling',
-      'Botnet Activity'
-    ];
-    
-    this.severityLevels = ['critical', 'high', 'medium', 'low'];
-    this.threatSources = [
-      '192.168.1.50',
-      '10.0.0.100',
-      '172.16.1.25',
-      '203.0.113.45',
-      '198.51.100.78',
-      '192.0.2.123'
-    ];
+    this.cache = new Map();
+    this.cacheTimeout = 30000; // 30 seconds
   }
 
-  async getThreats(filters = {}) {
+  /**
+   * Get all threats with optional filtering
+   * @param {Object} params - Query parameters
+   * @returns {Promise<Array>} Array of threat objects
+   */
+  async getThreats(params = {}) {
     try {
-      // In production, this would be: return apiService.get('/threats', filters);
-      // For demo purposes, we'll simulate the API call
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          const mockThreats = this.generateMockThreats(filters.limit || 20);
-          resolve(mockThreats);
-        }, 400);
+      const queryParams = new URLSearchParams({
+        page: params.page || 1,
+        limit: params.limit || 50,
+        severity: params.severity || '',
+        type: params.type || '',
+        status: params.status || '',
+        start_time: params.startTime || '',
+        end_time: params.endTime || '',
+        source_ip: params.sourceIp || '',
+        destination_ip: params.destinationIp || ''
       });
+
+      const cacheKey = `threats-${queryParams.toString()}`;
+      
+      // Check cache first
+      if (this.cache.has(cacheKey)) {
+        const cached = this.cache.get(cacheKey);
+        if (Date.now() - cached.timestamp < this.cacheTimeout) {
+          return cached.data;
+        }
+      }
+
+      const response = await api.get(`/threats?${queryParams}`);
+      
+      if (!validateThreatResponse(response.data)) {
+        throw new Error('Invalid threat data received');
+      }
+
+      const formattedThreats = response.data.threats.map(formatThreatData);
+      
+      // Cache the response
+      this.cache.set(cacheKey, {
+        data: {
+          threats: formattedThreats,
+          total: response.data.total,
+          page: response.data.page,
+          totalPages: response.data.totalPages
+        },
+        timestamp: Date.now()
+      });
+
+      return {
+        threats: formattedThreats,
+        total: response.data.total,
+        page: response.data.page,
+        totalPages: response.data.totalPages
+      };
     } catch (error) {
+      console.error('Error fetching threats:', error);
       throw new Error(`Failed to fetch threats: ${error.message}`);
     }
   }
 
-  async getThreatStats() {
+  /**
+   * Get threat by ID
+   * @param {string} threatId - Threat identifier
+   * @returns {Promise<Object>} Threat object with detailed information
+   */
+  async getThreatById(threatId) {
     try {
-      // In production: return apiService.get('/threats/stats');
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            total: 23,
-            critical: 3,
-            high: 7,
-            medium: 8,
-            low: 5,
-            resolved: 45,
-            acknowledged: 12,
-            new: 11
-          });
-        }, 300);
-      });
-    } catch (error) {
-      throw new Error(`Failed to fetch threat statistics: ${error.message}`);
-    }
-  }
+      if (!threatId) {
+        throw new Error('Threat ID is required');
+      }
 
-  async getThreatDetails(threatId) {
-    try {
-      // In production: return apiService.get(`/threats/${threatId}`);
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            id: threatId,
-            type: 'DDoS Attack',
-            severity: 'critical',
-            status: 'active',
-            sourceIp: '203.0.113.45',
-            targetIp: '192.168.1.100',
-            firstSeen: new Date(Date.now() - 3600000).toISOString(),
-            lastSeen: new Date().toISOString(),
-            attackVector: 'UDP Flood',
-            affectedPorts: [80, 443, 22],
-            packetCount: 15420,
-            bandwidth: '850 Mbps',
-            geoLocation: {
-              country: 'Unknown',
-              city: 'Unknown',
-              coordinates: { lat: 0, lng: 0 }
-            },
-            mitigation: {
-              status: 'active',
-              method: 'Rate Limiting',
-              effectiveness: '78%'
-            },
-            timeline: [
-              {
-                timestamp: new Date(Date.now() - 3600000).toISOString(),
-                event: 'Threat detected',
-                details: 'Unusual traffic pattern identified'
-              },
-              {
-                timestamp: new Date(Date.now() - 3000000).toISOString(),
-                event: 'Analysis completed',
-                details: 'Confirmed DDoS attack pattern'
-              },
-              {
-                timestamp: new Date(Date.now() - 2400000).toISOString(),
-                event: 'Mitigation started',
-                details: 'Rate limiting rules applied'
-              }
-            ],
-            relatedPackets: [
-              'packet_1234', 'packet_1235', 'packet_1236'
-            ],
-            recommendations: [
-              'Implement additional rate limiting',
-              'Consider IP blacklisting for source',
-              'Monitor for pattern evolution',
-              'Review firewall rules'
-            ]
-          });
-        }, 500);
+      const cacheKey = `threat-${threatId}`;
+      
+      if (this.cache.has(cacheKey)) {
+        const cached = this.cache.get(cacheKey);
+        if (Date.now() - cached.timestamp < this.cacheTimeout) {
+          return cached.data;
+        }
+      }
+
+      const response = await api.get(`/threats/${threatId}`);
+      const threat = formatThreatData(response.data);
+      
+      // Cache the threat
+      this.cache.set(cacheKey, {
+        data: threat,
+        timestamp: Date.now()
       });
+
+      return threat;
     } catch (error) {
+      console.error(`Error fetching threat ${threatId}:`, error);
       throw new Error(`Failed to fetch threat details: ${error.message}`);
     }
   }
 
-  async acknowledgeThreat(threatId) {
+  /**
+   * Get real-time threat statistics
+   * @returns {Promise<Object>} Threat statistics
+   */
+  async getThreatStats() {
     try {
-      // In production: return apiService.patch(`/threats/${threatId}/acknowledge`);
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            id: threatId,
-            acknowledged: true,
-            acknowledgedAt: new Date().toISOString(),
-            acknowledgedBy: 'current_user'
-          });
-        }, 200);
-      });
+      const response = await api.get('/threats/stats');
+      
+      return {
+        total: response.data.total || 0,
+        active: response.data.active || 0,
+        critical: response.data.critical || 0,
+        high: response.data.high || 0,
+        medium: response.data.medium || 0,
+        low: response.data.low || 0,
+        resolved: response.data.resolved || 0,
+        falsePositives: response.data.false_positives || 0,
+        topThreatTypes: response.data.top_threat_types || [],
+        recentThreats: response.data.recent_threats?.map(formatThreatData) || []
+      };
     } catch (error) {
-      throw new Error(`Failed to acknowledge threat: ${error.message}`);
+      console.error('Error fetching threat stats:', error);
+      throw new Error(`Failed to fetch threat statistics: ${error.message}`);
     }
   }
 
-  async dismissThreat(threatId) {
+  /**
+   * Update threat status
+   * @param {string} threatId - Threat identifier
+   * @param {string} status - New status
+   * @param {string} notes - Optional notes
+   * @returns {Promise<Object>} Updated threat object
+   */
+  async updateThreatStatus(threatId, status, notes = '') {
     try {
-      // In production: return apiService.delete(`/threats/${threatId}`);
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            id: threatId,
-            dismissed: true,
-            dismissedAt: new Date().toISOString()
-          });
-        }, 200);
+      if (!threatId || !status) {
+        throw new Error('Threat ID and status are required');
+      }
+
+      if (!Object.values(THREAT_STATUS).includes(status)) {
+        throw new Error('Invalid threat status');
+      }
+
+      const response = await api.patch(`/threats/${threatId}/status`, {
+        status,
+        notes,
+        updated_at: new Date().toISOString()
       });
+
+      // Clear cache for this threat
+      this.cache.delete(`threat-${threatId}`);
+      this.clearThreatsCache();
+
+      return formatThreatData(response.data);
     } catch (error) {
-      throw new Error(`Failed to dismiss threat: ${error.message}`);
+      console.error(`Error updating threat status:`, error);
+      throw new Error(`Failed to update threat status: ${error.message}`);
     }
   }
 
-  async resolveThreat(threatId, resolution) {
+  /**
+   * Get threat timeline/history
+   * @param {string} threatId - Threat identifier
+   * @returns {Promise<Array>} Array of timeline events
+   */
+  async getThreatTimeline(threatId) {
     try {
-      return apiService.patch(`/threats/${threatId}/resolve`, {
-        resolution: resolution,
-        resolvedAt: new Date().toISOString()
-      });
+      if (!threatId) {
+        throw new Error('Threat ID is required');
+      }
+
+      const response = await api.get(`/threats/${threatId}/timeline`);
+      
+      return response.data.timeline.map(event => ({
+        id: event.id,
+        timestamp: new Date(event.timestamp),
+        action: event.action,
+        description: event.description,
+        severity: event.severity,
+        user: event.user || 'System',
+        metadata: event.metadata || {}
+      }));
     } catch (error) {
-      throw new Error(`Failed to resolve threat: ${error.message}`);
+      console.error(`Error fetching threat timeline:`, error);
+      throw new Error(`Failed to fetch threat timeline: ${error.message}`);
     }
   }
 
-  async blockThreatSource(threatId, sourceIp) {
+  /**
+   * Get similar threats
+   * @param {string} threatId - Threat identifier
+   * @param {number} limit - Number of similar threats to return
+   * @returns {Promise<Array>} Array of similar threat objects
+   */
+  async getSimilarThreats(threatId, limit = 5) {
     try {
-      return apiService.post(`/threats/${threatId}/block`, {
-        sourceIp: sourceIp,
-        action: 'block',
-        duration: '24h'
-      });
+      if (!threatId) {
+        throw new Error('Threat ID is required');
+      }
+
+      const response = await api.get(`/threats/${threatId}/similar?limit=${limit}`);
+      
+      return response.data.similar_threats.map(formatThreatData);
     } catch (error) {
-      throw new Error(`Failed to block threat source: ${error.message}`);
+      console.error(`Error fetching similar threats:`, error);
+      throw new Error(`Failed to fetch similar threats: ${error.message}`);
     }
   }
 
-  async getThreatHistory(threatId) {
+  /**
+   * Create manual threat entry
+   * @param {Object} threatData - Threat information
+   * @returns {Promise<Object>} Created threat object
+   */
+  async createThreat(threatData) {
     try {
-      return apiService.get(`/threats/${threatId}/history`);
+      const requiredFields = ['type', 'severity', 'source_ip', 'description'];
+      for (const field of requiredFields) {
+        if (!threatData[field]) {
+          throw new Error(`${field} is required`);
+        }
+      }
+
+      const payload = {
+        ...threatData,
+        created_at: new Date().toISOString(),
+        status: THREAT_STATUS.ACTIVE,
+        severity_score: calculateThreatSeverity(threatData)
+      };
+
+      const response = await api.post('/threats', payload);
+      
+      // Clear threats cache
+      this.clearThreatsCache();
+      
+      return formatThreatData(response.data);
     } catch (error) {
-      throw new Error(`Failed to fetch threat history: ${error.message}`);
+      console.error('Error creating threat:', error);
+      throw new Error(`Failed to create threat: ${error.message}`);
     }
   }
 
-  async updateThreatSeverity(threatId, severity) {
+  /**
+   * Delete threat
+   * @param {string} threatId - Threat identifier
+   * @returns {Promise<boolean>} Success status
+   */
+  async deleteThreat(threatId) {
     try {
-      return apiService.patch(`/threats/${threatId}/severity`, {
-        severity: severity,
-        updatedAt: new Date().toISOString()
-      });
+      if (!threatId) {
+        throw new Error('Threat ID is required');
+      }
+
+      await api.delete(`/threats/${threatId}`);
+      
+      // Clear cache
+      this.cache.delete(`threat-${threatId}`);
+      this.clearThreatsCache();
+      
+      return true;
     } catch (error) {
-      throw new Error(`Failed to update threat severity: ${error.message}`);
+      console.error(`Error deleting threat:`, error);
+      throw new Error(`Failed to delete threat: ${error.message}`);
     }
   }
 
-  async searchThreats(query, filters = {}) {
+  /**
+   * Get threat detection rules
+   * @returns {Promise<Array>} Array of detection rules
+   */
+  async getDetectionRules() {
     try {
-      return apiService.get('/threats/search', {
-        q: query,
-        ...filters
-      });
+      const response = await api.get('/threats/detection-rules');
+      
+      return response.data.rules.map(rule => ({
+        id: rule.id,
+        name: rule.name,
+        description: rule.description,
+        type: rule.type,
+        severity: rule.severity,
+        enabled: rule.enabled,
+        conditions: rule.conditions,
+        actions: rule.actions,
+        created_at: new Date(rule.created_at),
+        updated_at: new Date(rule.updated_at)
+      }));
     } catch (error) {
-      throw new Error(`Failed to search threats: ${error.message}`);
+      console.error('Error fetching detection rules:', error);
+      throw new Error(`Failed to fetch detection rules: ${error.message}`);
     }
   }
 
-  async exportThreats(format = 'json', filters = {}) {
+  /**
+   * Update detection rule
+   * @param {string} ruleId - Rule identifier
+   * @param {Object} ruleData - Updated rule data
+   * @returns {Promise<Object>} Updated rule object
+   */
+  async updateDetectionRule(ruleId, ruleData) {
     try {
-      return apiService.post('/threats/export', {
-        format: format,
-        filters: filters,
-        exportedAt: new Date().toISOString()
+      if (!ruleId) {
+        throw new Error('Rule ID is required');
+      }
+
+      const response = await api.patch(`/threats/detection-rules/${ruleId}`, {
+        ...ruleData,
+        updated_at: new Date().toISOString()
       });
+
+      return response.data;
     } catch (error) {
+      console.error('Error updating detection rule:', error);
+      throw new Error(`Failed to update detection rule: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get threat intelligence feeds
+   * @returns {Promise<Array>} Array of threat intelligence data
+   */
+  async getThreatIntelligence() {
+    try {
+      const response = await api.get('/threats/intelligence');
+      
+      return response.data.feeds.map(feed => ({
+        id: feed.id,
+        source: feed.source,
+        type: feed.type,
+        indicators: feed.indicators,
+        confidence: feed.confidence,
+        last_updated: new Date(feed.last_updated),
+        tags: feed.tags || []
+      }));
+    } catch (error) {
+      console.error('Error fetching threat intelligence:', error);
+      throw new Error(`Failed to fetch threat intelligence: ${error.message}`);
+    }
+  }
+
+  /**
+   * Export threats data
+   * @param {Object} params - Export parameters
+   * @returns {Promise<Blob>} Export file blob
+   */
+  async exportThreats(params = {}) {
+    try {
+      const queryParams = new URLSearchParams({
+        format: params.format || 'csv',
+        start_time: params.startTime || '',
+        end_time: params.endTime || '',
+        severity: params.severity || '',
+        type: params.type || ''
+      });
+
+      const response = await api.get(`/threats/export?${queryParams}`, {
+        responseType: 'blob'
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('Error exporting threats:', error);
       throw new Error(`Failed to export threats: ${error.message}`);
     }
   }
 
-  async getThreatsByTimeRange(startTime, endTime) {
-    try {
-      return apiService.get('/threats/timerange', {
-        start: startTime,
-        end: endTime
-      });
-    } catch (error) {
-      throw new Error(`Failed to fetch threats by time range: ${error.message}`);
-    }
-  }
-
-  async getThreatTrends(period = '24h') {
-    try {
-      // In production: return apiService.get(`/threats/trends?period=${period}`);
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          const trends = this.generateMockTrends(period);
-          resolve(trends);
-        }, 600);
-      });
-    } catch (error) {
-      throw new Error(`Failed to fetch threat trends: ${error.message}`);
-    }
-  }
-
-  // Helper methods for generating mock data
-  generateMockThreats(count = 20) {
-    const threats = [];
-    
-    for (let i = 0; i < count; i++) {
-      const timestamp = new Date(Date.now() - Math.random() * 86400000); // Last 24 hours
-      const severity = this.severityLevels[Math.floor(Math.random() * this.severityLevels.length)];
-      const threatType = this.threatTypes[Math.floor(Math.random() * this.threatTypes.length)];
-      const sourceIp = this.threatSources[Math.floor(Math.random() * this.threatSources.length)];
-      
-      threats.push({
-        id: `threat_${i + 1}`,
-        type: threatType,
-        severity: severity,
-        status: Math.random() > 0.7 ? 'resolved' : Math.random() > 0.5 ? 'investigating' : 'active',
-        sourceIp: sourceIp,
-        targetIp: '192.168.1.100',
-        firstSeen: timestamp.toISOString(),
-        lastSeen: new Date(timestamp.getTime() + Math.random() * 3600000).toISOString(),
-        description: this.generateThreatDescription(threatType),
-        confidence: Math.floor(Math.random() * 40) + 60, // 60-100%
-        riskScore: Math.floor(Math.random() * 50) + 50, // 50-100
-        acknowledged: Math.random() > 0.6,
-        affectedAssets: Math.floor(Math.random() * 5) + 1,
-        mitigationStatus: Math.random() > 0.5 ? 'active' : 'pending'
-      });
-    }
-    
-    return threats.sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
-  }
-
-  generateThreatDescription(threatType) {
-    const descriptions = {
-      'DDoS Attack': 'High volume of requests detected from multiple sources',
-      'Port Scan': 'Sequential port scanning activity identified',
-      'Malware Communication': 'Suspicious outbound connections to known malware C&C servers',
-      'Suspicious Traffic': 'Anomalous network behavior patterns detected',
-      'Data Exfiltration': 'Unusual large data transfers to external destinations',
-      'Brute Force Attack': 'Multiple failed authentication attempts detected',
-      'SQL Injection': 'Malicious SQL queries detected in web traffic',
-      'Cross-Site Scripting': 'XSS attack patterns identified in HTTP requests',
-      'DNS Tunneling': 'Suspicious DNS query patterns suggesting data exfiltration',
-      'Botnet Activity': 'Communication patterns consistent with botnet behavior'
-    };
-    
-    return descriptions[threatType] || 'Security threat detected';
-  }
-
-  generateMockTrends(period) {
-    const dataPoints = period === '1h' ? 60 : period === '24h' ? 24 : 30;
-    const trends = [];
-    
-    for (let i = dataPoints - 1; i >= 0; i--) {
-      const timestamp = new Date();
-      
-      if (period === '1h') {
-        timestamp.setMinutes(timestamp.getMinutes() - i);
-      } else if (period === '24h') {
-        timestamp.setHours(timestamp.getHours() - i);
-      } else {
-        timestamp.setDate(timestamp.getDate() - i);
+  /**
+   * Clear threats cache
+   */
+  clearThreatsCache() {
+    for (const key of this.cache.keys()) {
+      if (key.startsWith('threats-')) {
+        this.cache.delete(key);
       }
-      
-      trends.push({
-        timestamp: timestamp.toISOString(),
-        total: Math.floor(Math.random() * 10) + 1,
-        critical: Math.floor(Math.random() * 3),
-        high: Math.floor(Math.random() * 4) + 1,
-        medium: Math.floor(Math.random() * 3) + 2,
-        low: Math.floor(Math.random() * 2) + 1
-      });
     }
-    
-    return trends;
   }
 
-  // Utility methods
-  getSeverityColor(severity) {
-    const colors = {
-      critical: '#EF4444', // red-500
-      high: '#F97316',     // orange-500
-      medium: '#EAB308',   // yellow-500
-      low: '#22C55E'       // green-500
+  /**
+   * Clear all cache
+   */
+  clearCache() {
+    this.cache.clear();
+  }
+
+  /**
+   * Get cache statistics
+   * @returns {Object} Cache statistics
+   */
+  getCacheStats() {
+    return {
+      size: this.cache.size,
+      keys: Array.from(this.cache.keys())
     };
-    return colors[severity] || '#6B7280'; // gray-500
-  }
-
-  getSeverityWeight(severity) {
-    const weights = {
-      critical: 4,
-      high: 3,
-      medium: 2,
-      low: 1
-    };
-    return weights[severity] || 0;
-  }
-
-  formatThreatType(type) {
-    return type.split(' ').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    ).join(' ');
-  }
-
-  calculateRiskLevel(threats) {
-    if (!threats.length) return 'low';
-    
-    const totalWeight = threats.reduce((sum, threat) => 
-      sum + this.getSeverityWeight(threat.severity), 0
-    );
-    
-    const avgWeight = totalWeight / threats.length;
-    
-    if (avgWeight >= 3.5) return 'critical';
-    if (avgWeight >= 2.5) return 'high';
-    if (avgWeight >= 1.5) return 'medium';
-    return 'low';
   }
 }
 
-export const threatService = new ThreatService();
+// Create and export singleton instance
+const threatService = new ThreatService();
+export default threatService;
