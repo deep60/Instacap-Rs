@@ -1,141 +1,388 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { useWebSocket } from './useWebSocket';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { websocketService } from '../services/websocket';
 
-export const useRealTimeUpdates = () => {
-  const { lastMessage, sendMessage, readyState } = useWebSocket('ws://localhost:8080/realtime');
-  const subscribers = useRef(new Map());
+const useRealTimeUpdates = (options = {}) => {
+  const {
+    autoConnect = true,
+    reconnectAttempts = 5,
+    reconnectDelay = 1000,
+    maxReconnectDelay = 30000,
+    enableHeartbeat = true,
+    heartbeatInterval = 30000,
+    bufferSize = 1000,
+    subscriptions = ['packets', 'threats', 'alerts', 'performance'],
+    onPacketReceived,
+    onThreatDetected,
+    onAlertReceived,
+    onPerformanceUpdate,
+    onConnectionChange,
+    onError
+  } = options;
 
-  const subscribe = useCallback((channel, callback) => {
-    if (!subscribers.current.has(channel)) {
-      subscribers.current.set(channel, new Set());
-    }
-    subscribers.current.get(channel).add(callback);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [lastUpdate, setLastUpdate] = useState(null);
+  const [updateCount, setUpdateCount] = useState(0);
+  const [reconnectCount, setReconnectCount] = useState(0);
+  const [latency, setLatency] = useState(0);
+  const [error, setError] = useState(null);
+
+  // Buffers for different data types
+  const [packetBuffer, setPacketBuffer] = useState([]);
+  const [threatBuffer, setThreatBuffer] = useState([]);
+  const [alertBuffer, setAlertBuffer] = useState([]);
+  const [performanceBuffer, setPerformanceBuffer] = useState([]);
+
+  // Refs for managing state
+  const wsRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+  const heartbeatIntervalRef = useRef(null);
+  const pingTimeRef = useRef(null);
+  const currentReconnectDelayRef = useRef(reconnectDelay);
+
+  // Statistics
+  const [statistics, setStatistics] = useState({
+    packetsReceived: 0,
+    threatsDetected: 0,
+    alertsReceived: 0,
+    performanceUpdates: 0,
+    bytesReceived: 0,
+    messagesPerSecond: 0,
+    avgLatency: 0
+  });
+
+  const statisticsRef = useRef(statistics);
+  const messageTimestampsRef = useRef([]);
+
+  // Update statistics
+  const updateStatistics = useCallback((type, data) => {
+    const now = Date.now();
+    messageTimestampsRef.current.push(now);
     
-    // Subscribe to channel on server
-    if (readyState === 1) {
-      sendMessage({
-        type: 'subscribe',
-        channel: channel
-      });
-    }
-  }, [sendMessage, readyState]);
+    // Keep only last minute of timestamps
+    messageTimestampsRef.current = messageTimestampsRef.current.filter(
+      timestamp => now - timestamp < 60000
+    );
 
-  const unsubscribe = useCallback((channel, callback) => {
-    if (subscribers.current.has(channel)) {
-      subscribers.current.get(channel).delete(callback);
-      
-      if (subscribers.current.get(channel).size === 0) {
-        subscribers.current.delete(channel);
-        
-        // Unsubscribe from channel on server
-        if (readyState === 1) {
-          sendMessage({
-            type: 'unsubscribe',
-            channel: channel
-          });
-        }
+    const messagesPerSecond = messageTimestampsRef.current.length / 60;
+
+    setStatistics(prev => {
+      const updated = {
+        ...prev,
+        bytesReceived: prev.bytesReceived + (JSON.stringify(data).length || 0),
+        messagesPerSecond: Math.round(messagesPerSecond * 100) / 100
+      };
+
+      switch (type) {
+        case 'packet':
+          updated.packetsReceived += 1;
+          break;
+        case 'threat':
+          updated.threatsDetected += 1;
+          break;
+        case 'alert':
+          updated.alertsReceived += 1;
+          break;
+        case 'performance':
+          updated.performanceUpdates += 1;
+          break;
       }
-    }
-  }, [sendMessage, readyState]);
 
-  const publish = useCallback((channel, data) => {
-    sendMessage({
-      type: 'publish',
-      channel: channel,
-      data: data
+      statisticsRef.current = updated;
+      return updated;
     });
-  }, [sendMessage]);
-
-  // Handle incoming messages
-  useEffect(() => {
-    if (lastMessage) {
-      try {
-        const message = JSON.parse(lastMessage.data);
-        const { channel, data, type } = message;
-        
-        if (type === 'data' && subscribers.current.has(channel)) {
-          subscribers.current.get(channel).forEach(callback => {
-            callback(data);
-          });
-        }
-        
-        // Handle specific data types
-        if (type === 'traffic-update') {
-          const trafficCallbacks = subscribers.current.get('traffic-data');
-          if (trafficCallbacks) {
-            trafficCallbacks.forEach(callback => {
-              const now = new Date();
-              callback({
-                timestamp: now.toLocaleTimeString('en-US', { 
-                  hour12: false,
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }),
-                inbound: data.inbound || Math.floor(Math.random() * 1000) + 200,
-                outbound: data.outbound || Math.floor(Math.random() * 800) + 150,
-                total: (data.inbound || 0) + (data.outbound || 0)
-              });
-            });
-          }
-        }
-        
-        if (type === 'performance-update') {
-          const perfCallbacks = subscribers.current.get('performance-data');
-          if (perfCallbacks) {
-            perfCallbacks.forEach(callback => callback(data));
-          }
-        }
-        
-      } catch (err) {
-        console.error('Error parsing real-time message:', err);
-      }
-    }
-  }, [lastMessage]);
-
-  // Simulate real-time data for demo
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Simulate traffic data
-      const trafficCallbacks = subscribers.current.get('traffic-data');
-      if (trafficCallbacks && trafficCallbacks.size > 0) {
-        const now = new Date();
-        const data = {
-          timestamp: now.toLocaleTimeString('en-US', { 
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit'
-          }),
-          inbound: Math.floor(Math.random() * 1000) + 200,
-          outbound: Math.floor(Math.random() * 800) + 150,
-          total: 0
-        };
-        data.total = data.inbound + data.outbound;
-        
-        trafficCallbacks.forEach(callback => callback(data));
-      }
-      
-      // Simulate performance data
-      const perfCallbacks = subscribers.current.get('performance-data');
-      if (perfCallbacks && perfCallbacks.size > 0) {
-        const data = {
-          latency: Math.floor(Math.random() * 100) + 10,
-          jitter: Math.floor(Math.random() * 20) + 1,
-          packetLoss: Math.random() * 2,
-          timestamp: new Date().toISOString()
-        };
-        
-        perfCallbacks.forEach(callback => callback(data));
-      }
-      
-    }, 2000); // Update every 2 seconds
-    
-    return () => clearInterval(interval);
   }, []);
 
+  // Handle incoming messages
+  const handleMessage = useCallback((event) => {
+    try {
+      const data = JSON.parse(event.data);
+      const now = Date.now();
+      
+      setLastUpdate(now);
+      setUpdateCount(prev => prev + 1);
+
+      // Calculate latency if timestamp is provided
+      if (data.timestamp) {
+        const messageLatency = now - new Date(data.timestamp).getTime();
+        setLatency(messageLatency);
+        
+        setStatistics(prev => ({
+          ...prev,
+          avgLatency: Math.round(((prev.avgLatency * (prev.packetsReceived - 1)) + messageLatency) / prev.packetsReceived)
+        }));
+      }
+
+      // Handle different message types
+      switch (data.type) {
+        case 'packet':
+          setPacketBuffer(prev => {
+            const updated = [data.payload, ...prev].slice(0, bufferSize);
+            onPacketReceived?.(data.payload, updated);
+            return updated;
+          });
+          updateStatistics('packet', data.payload);
+          break;
+
+        case 'threat':
+          setThreatBuffer(prev => {
+            const updated = [data.payload, ...prev].slice(0, bufferSize);
+            onThreatDetected?.(data.payload, updated);
+            return updated;
+          });
+          updateStatistics('threat', data.payload);
+          break;
+
+        case 'alert':
+          setAlertBuffer(prev => {
+            const updated = [data.payload, ...prev].slice(0, bufferSize);
+            onAlertReceived?.(data.payload, updated);
+            return updated;
+          });
+          updateStatistics('alert', data.payload);
+          break;
+
+        case 'performance':
+          setPerformanceBuffer(prev => {
+            const updated = [data.payload, ...prev].slice(0, bufferSize);
+            onPerformanceUpdate?.(data.payload, updated);
+            return updated;
+          });
+          updateStatistics('performance', data.payload);
+          break;
+
+        case 'pong':
+          if (pingTimeRef.current) {
+            const pingLatency = now - pingTimeRef.current;
+            setLatency(pingLatency);
+            pingTimeRef.current = null;
+          }
+          break;
+
+        case 'error':
+          setError(data.message || 'WebSocket error received');
+          onError?.(data);
+          break;
+
+        default:
+          console.warn('Unknown message type:', data.type);
+      }
+    } catch (err) {
+      console.error('Error parsing WebSocket message:', err);
+      setError('Failed to parse incoming message');
+      onError?.(err);
+    }
+  }, [bufferSize, onPacketReceived, onThreatDetected, onAlertReceived, onPerformanceUpdate, onError, updateStatistics]);
+
+  // Setup heartbeat
+  const setupHeartbeat = useCallback(() => {
+    if (!enableHeartbeat || heartbeatIntervalRef.current) return;
+
+    heartbeatIntervalRef.current = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        pingTimeRef.current = Date.now();
+        wsRef.current.send(JSON.stringify({ type: 'ping', timestamp: pingTimeRef.current }));
+      }
+    }, heartbeatInterval);
+  }, [enableHeartbeat, heartbeatInterval]);
+
+  // Clear heartbeat
+  const clearHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+  }, []);
+
+  // Connect to WebSocket
+  const connect = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      try {
+        setConnectionStatus('connecting');
+        setError(null);
+
+        wsRef.current = websocketService.connect({
+          onOpen: () => {
+            setIsConnected(true);
+            setConnectionStatus('connected');
+            setReconnectCount(0);
+            currentReconnectDelayRef.current = reconnectDelay;
+            
+            // Subscribe to channels
+            subscriptions.forEach(subscription => {
+              wsRef.current.send(JSON.stringify({
+                type: 'subscribe',
+                channel: subscription
+              }));
+            });
+
+            setupHeartbeat();
+            onConnectionChange?.(true);
+            resolve();
+          },
+          onMessage: handleMessage,
+          onClose: (event) => {
+            setIsConnected(false);
+            setConnectionStatus('disconnected');
+            clearHeartbeat();
+            onConnectionChange?.(false);
+
+            // Attempt reconnection if not a clean close
+            if (event.code !== 1000 && reconnectCount < reconnectAttempts) {
+              scheduleReconnect();
+            }
+          },
+          onError: (error) => {
+            setError(error.message || 'WebSocket connection error');
+            setConnectionStatus('error');
+            onError?.(error);
+            reject(error);
+          }
+        });
+      } catch (err) {
+        setError(err.message);
+        setConnectionStatus('error');
+        reject(err);
+      }
+    });
+  }, [subscriptions, handleMessage, setupHeartbeat, onConnectionChange, onError, reconnectCount, reconnectAttempts, reconnectDelay]);
+
+  // Schedule reconnection
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) return;
+
+    setConnectionStatus('reconnecting');
+    setReconnectCount(prev => prev + 1);
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      reconnectTimeoutRef.current = null;
+      connect().catch(() => {
+        // Exponential backoff
+        currentReconnectDelayRef.current = Math.min(
+          currentReconnectDelayRef.current * 2,
+          maxReconnectDelay
+        );
+      });
+    }, currentReconnectDelayRef.current);
+  }, [connect, maxReconnectDelay]);
+
+  // Disconnect from WebSocket
+  const disconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    clearHeartbeat();
+
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'Manual disconnect');
+      wsRef.current = null;
+    }
+
+    setIsConnected(false);
+    setConnectionStatus('disconnected');
+  }, [clearHeartbeat]);
+
+  // Send message
+  const sendMessage = useCallback((message) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message));
+      return true;
+    }
+    return false;
+  }, []);
+
+  // Subscribe to channel
+  const subscribe = useCallback((channel) => {
+    return sendMessage({ type: 'subscribe', channel });
+  }, [sendMessage]);
+
+  // Unsubscribe from channel
+  const unsubscribe = useCallback((channel) => {
+    return sendMessage({ type: 'unsubscribe', channel });
+  }, [sendMessage]);
+
+  // Clear buffers
+  const clearBuffers = useCallback(() => {
+    setPacketBuffer([]);
+    setThreatBuffer([]);
+    setAlertBuffer([]);
+    setPerformanceBuffer([]);
+  }, []);
+
+  // Reset statistics
+  const resetStatistics = useCallback(() => {
+    setStatistics({
+      packetsReceived: 0,
+      threatsDetected: 0,
+      alertsReceived: 0,
+      performanceUpdates: 0,
+      bytesReceived: 0,
+      messagesPerSecond: 0,
+      avgLatency: 0
+    });
+    messageTimestampsRef.current = [];
+    setUpdateCount(0);
+  }, []);
+
+  // Auto-connect on mount
+  useEffect(() => {
+    if (autoConnect) {
+      connect();
+    }
+
+    return () => {
+      disconnect();
+    };
+  }, [autoConnect, connect, disconnect]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      clearHeartbeat();
+    };
+  }, [clearHeartbeat]);
+
   return {
+    // Connection state
+    isConnected,
+    connectionStatus,
+    reconnectCount,
+    latency,
+    error,
+    
+    // Data buffers
+    packetBuffer,
+    threatBuffer,
+    alertBuffer,
+    performanceBuffer,
+    
+    // Statistics
+    statistics,
+    lastUpdate,
+    updateCount,
+    
+    // Actions
+    connect,
+    disconnect,
+    sendMessage,
     subscribe,
     unsubscribe,
-    publish,
-    isConnected: readyState === 1
+    clearBuffers,
+    resetStatistics,
+    
+    // Utilities
+    setError: (err) => setError(err),
+    clearError: () => setError(null)
   };
 };
+
+export default useRealTimeUpdates;
