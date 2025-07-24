@@ -429,4 +429,7 @@ class ThreatService {
 
 // Create and export singleton instance
 const threatService = new ThreatService();
+
+// Export named export for compatibility
+export { threatService };
 export default threatService;

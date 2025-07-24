@@ -542,5 +542,36 @@ class WebSocketService {
 // Create and export singleton instance
 const webSocketService = new WebSocketService();
 
-// Export service and constants
-export { webSocketService as default, WS_STATES, WS_MESSAGE_TYPES, WS_CHANNELS };
+// Legacy API functions for backward compatibility
+export const initializeWebSocket = (url, options = {}) => {
+  webSocketService.url = url;
+  webSocketService.options = { ...webSocketService.options, ...options };
+  
+  // Set up event handlers
+  if (options.onOpen) {
+    webSocketService.on('connected', options.onOpen);
+  }
+  if (options.onClose) {
+    webSocketService.on('disconnected', options.onClose);
+  }
+  if (options.onError) {
+    webSocketService.on('error', options.onError);
+  }
+  if (options.onMessage) {
+    webSocketService.on('message', options.onMessage);
+  }
+  
+  webSocketService.connect();
+  return webSocketService;
+};
+
+export const closeWebSocket = () => {
+  webSocketService.disconnect(false);
+};
+
+export const sendWebSocketMessage = (message) => {
+  webSocketService.send(message);
+};
+
+// Export service as default
+export default webSocketService;

@@ -272,5 +272,12 @@ export const configApi = {
     analysisEngineApi.put('/config/thresholds', thresholds),
 };
 
+// Configuration function
+export const setApiBaseUrl = (baseUrl) => {
+  packetCaptureApi.baseURL = baseUrl;
+  analysisEngineApi.baseURL = baseUrl.replace('8080', '8081');
+  mlModelsApi.baseURL = baseUrl.replace('8080', '8082');
+};
+
 // Export default API instance
 export default packetCaptureApi;

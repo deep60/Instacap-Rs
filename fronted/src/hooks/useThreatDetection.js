@@ -500,3 +500,4 @@ const useThreatDetection = (options = {}) => {
 };
 
 export default useThreatDetection;
+export { useThreatDetection };

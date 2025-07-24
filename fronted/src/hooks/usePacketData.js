@@ -323,3 +323,4 @@ const usePacketData = (initialFilters = {}) => {
 };
 
 export default usePacketData;
+export { usePacketData };

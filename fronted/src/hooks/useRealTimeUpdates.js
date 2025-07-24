@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { websocketService } from '../services/websocket';
+import webSocketService from '../services/webSocket';
 
 const useRealTimeUpdates = (options = {}) => {
   const {
@@ -205,7 +205,7 @@ const useRealTimeUpdates = (options = {}) => {
         setConnectionStatus('connecting');
         setError(null);
 
-        wsRef.current = websocketService.connect({
+        wsRef.current = webSocketService.connect({
           onOpen: () => {
             setIsConnected(true);
             setConnectionStatus('connected');
@@ -386,3 +386,4 @@ const useRealTimeUpdates = (options = {}) => {
 };
 
 export default useRealTimeUpdates;
+export { useRealTimeUpdates };

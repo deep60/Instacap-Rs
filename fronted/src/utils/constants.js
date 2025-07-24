@@ -7,6 +7,18 @@ export const API_CONFIG = {
   RETRY_DELAY: 1000
 };
 
+// API Endpoints
+export const API_ENDPOINTS = {
+  PACKETS: '/packets',
+  THREATS: '/threats',
+  PERFORMANCE: '/performance',
+  PROTOCOLS: '/protocols',
+  ALERTS: '/alerts',
+  STATS: '/stats',
+  CAPTURE: '/capture',
+  CONFIG: '/config'
+};
+
 // WebSocket Event Types
 export const WS_EVENTS = {
   CONNECT: 'connect',
@@ -17,6 +29,15 @@ export const WS_EVENTS = {
   PROTOCOL_STATS: 'protocol_stats',
   ANOMALY_DETECTED: 'anomaly_detected',
   SYSTEM_STATUS: 'system_status'
+};
+
+// Legacy WebSocket Events (for backward compatibility)
+export const WEBSOCKET_EVENTS = {
+  PACKET_CAPTURED: 'packet_captured',
+  THREAT_DETECTED: 'threat_detected',
+  SYSTEM_STATUS: 'system_status',
+  PERFORMANCE_UPDATE: 'performance_update',
+  ANALYSIS_COMPLETE: 'analysis_complete'
 };
 
 // Threat Severity Levels

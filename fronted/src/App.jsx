@@ -29,7 +29,7 @@ import PerformanceMetrics from './components/Performance/PerformanceMetrics';
 import ProtocolAnalysis from './components/Protocol/ProtocolAnalysis';
 
 // Services
-import { initializeWebSocket, closeWebSocket } from './services/websocket';
+import { initializeWebSocket, closeWebSocket } from './services/webSocket';
 import { setApiBaseUrl } from './services/api';
 
 // Hooks

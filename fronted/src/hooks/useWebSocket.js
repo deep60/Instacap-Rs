@@ -399,3 +399,4 @@ const useWebSocket = (url, options = {}) => {
 };
 
 export default useWebSocket;
+export { useWebSocket };

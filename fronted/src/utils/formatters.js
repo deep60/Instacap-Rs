@@ -442,3 +442,60 @@ export const formatArrayAsString = (arr, separator = ', ') => {
   if (!Array.isArray(arr)) return sanitizeForDisplay(arr);
   return arr.map(item => sanitizeForDisplay(item)).join(separator);
 };
+
+// Additional formatters for threat and packet data
+export const formatTimeAgo = (timestamp) => {
+  return formatRelativeTime(timestamp);
+};
+
+export const formatThreatData = (threat) => {
+  if (!threat) return null;
+  
+  return {
+    ...threat,
+    severity: formatThreatSeverity(threat.severity),
+    status: formatThreatStatus(threat.status),
+    timestamp: formatTimestamp(threat.timestamp),
+    lastSeen: threat.lastSeen ? formatTimestamp(threat.lastSeen) : null,
+    confidence: formatConfidenceScore(threat.confidence)
+  };
+};
+
+export const formatPacketData = (packet) => {
+  if (!packet) return null;
+  
+  return {
+    ...packet,
+    timestamp: formatTimestamp(packet.timestamp),
+    size: formatPacketSize(packet.size),
+    protocol: formatProtocol(packet.protocol),
+    sourceEndpoint: formatEndpoint(packet.sourceIp, packet.sourcePort),
+    destinationEndpoint: formatEndpoint(packet.destinationIp, packet.destinationPort)
+  };
+};
+
+export const validateThreatResponse = (data) => {
+  if (!data || typeof data !== 'object') return false;
+  
+  // Basic validation for threat response structure
+  return data.hasOwnProperty('threats') || data.hasOwnProperty('id');
+};
+
+export const calculateThreatSeverity = (threatData) => {
+  if (!threatData) return 'low';
+  
+  // Simple severity calculation based on threat properties
+  let score = 0;
+  
+  if (threatData.confidence > 0.9) score += 3;
+  else if (threatData.confidence > 0.7) score += 2;
+  else if (threatData.confidence > 0.5) score += 1;
+  
+  if (threatData.type === 'malware' || threatData.type === 'intrusion') score += 2;
+  if (threatData.impact === 'high') score += 2;
+  
+  if (score >= 6) return 'critical';
+  if (score >= 4) return 'high';
+  if (score >= 2) return 'medium';
+  return 'low';
+};
