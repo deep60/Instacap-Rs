@@ -97,8 +97,6 @@ const AlertItem = ({
     setIsProcessing(true);
     try {
       await onAcknowledge(alert.id);
-    } catch (error) {
-      console.error('Error acknowledging alert:', error);
     } finally {
       setIsProcessing(false);
     }
@@ -160,34 +158,34 @@ const AlertItem = ({
                 {/* Alert Metadata */}
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                   <span className="flex items-center space-x-1">
-                    <span>🕒</span>
+                    <span role="img" aria-label="time">🕒</span>
                     <span>{formatTimeAgo(alert.timestamp)}</span>
                   </span>
                   
                   {alert.source && (
                     <span className="flex items-center space-x-1">
-                      <span>📍</span>
+                      <span role="img" aria-label="location">📍</span>
                       <span>{alert.source}</span>
                     </span>
                   )}
                   
                   {alert.affectedIPs && alert.affectedIPs.length > 0 && (
                     <span className="flex items-center space-x-1">
-                      <span>🌐</span>
+                      <span role="img" aria-label="network">🌐</span>
                       <span>{alert.affectedIPs.length} IP{alert.affectedIPs.length > 1 ? 's' : ''}</span>
                     </span>
                   )}
                   
                   {alert.packetCount && (
                     <span className="flex items-center space-x-1">
-                      <span>📦</span>
+                      <span role="img" aria-label="packets">📦</span>
                       <span>{alert.packetCount.toLocaleString()} packets</span>
                     </span>
                   )}
                   
                   {alert.dataVolume && (
                     <span className="flex items-center space-x-1">
-                      <span>💾</span>
+                      <span role="img" aria-label="storage">💾</span>
                       <span>{formatBytes(alert.dataVolume)}</span>
                     </span>
                   )}
@@ -218,7 +216,7 @@ const AlertItem = ({
               
               {alert.isActive && !alert.resolved && (
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-red-100 text-red-800">
-                  🔴 Active
+                  <span role="img" aria-label="active">🔴</span> Active
                 </span>
               )}
             </div>

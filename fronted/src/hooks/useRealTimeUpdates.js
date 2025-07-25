@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import io from 'socket.io-client';
 import webSocketService from '../services/webSocket';
 
 const useRealTimeUpdates = (options = {}) => {
+  const opts = options || {}
+
   const {
     autoConnect = true,
     reconnectAttempts = 5,
@@ -17,7 +20,7 @@ const useRealTimeUpdates = (options = {}) => {
     onPerformanceUpdate,
     onConnectionChange,
     onError
-  } = options;
+  } = opts;
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');

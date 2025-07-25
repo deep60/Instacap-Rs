@@ -85,7 +85,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         ))}
       </div>
     );
-  }
+  };
 
   const topProtocols = getProtocolStats();
 
@@ -96,7 +96,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Total Packets"
         value={formatNumber(stats.totalPackets)}
         trend={previousStats ? calculateTrend(stats.totalPackets, previousStats.totalPackets) : 0}
-        icon="📦"
+        icon={<span>📦</span>}
         color="blue"
       />
 
@@ -105,7 +105,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Total Data"
         value={formatBytes(stats.totalBytes)}
         trend={previousStats ? calculateTrend(stats.totalBytes, previousStats.totalBytes) : 0}
-        icon="💾"
+        icon={<span>💾</span>}
         color="green"
       />
 
@@ -114,7 +114,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Packets/Sec"
         value={formatNumber(stats.packetsPerSecond)}
         trend={previousStats ? calculateTrend(stats.packetsPerSecond, previousStats.packetsPerSecond) : 0}
-        icon="⚡"
+        icon={<span>⚡</span>}
         color="yellow"
         subtitle="Real-time rate"
       />
@@ -124,7 +124,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Bandwidth"
         value={formatBytes(stats.bytesPerSecond) + '/s'}
         trend={previousStats ? calculateTrend(stats.bytesPerSecond, previousStats.bytesPerSecond) : 0}
-        icon="📊"
+        icon={<span>📊</span>}
         color="purple"
       />
 
@@ -133,7 +133,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Unique IPs"
         value={formatNumber(stats.uniqueIPs)}
         trend={previousStats ? calculateTrend(stats.uniqueIPs, previousStats.uniqueIPs) : 0}
-        icon="🌐"
+        icon={<span>🌐</span>}
         color="indigo"
         subtitle="Active hosts"
       />
@@ -143,7 +143,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Active Connections"
         value={formatNumber(stats.activeConnections)}
         trend={previousStats ? calculateTrend(stats.activeConnections, previousStats.activeConnections) : 0}
-        icon="🔗"
+        icon={<span>🔗</span>}
         color="cyan"
       />
 
@@ -152,7 +152,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Packet Loss"
         value={formatPercentage(stats.packetLoss)}
         trend={previousStats ? calculateTrend(stats.packetLoss, previousStats.packetLoss) : 0}
-        icon="⚠️"
+        icon={<span>⚠️</span>}
         color={stats.packetLoss > 1 ? "red" : "green"}
         invertTrend={true}
       />
@@ -162,7 +162,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Avg Latency"
         value={`${stats.averageLatency}ms`}
         trend={previousStats ? calculateTrend(stats.averageLatency, previousStats.averageLatency) : 0}
-        icon="⏱️"
+        icon={<span>⏱️</span>}
         color={stats.averageLatency > 100 ? "red" : "green"}
         invertTrend={true}
       />

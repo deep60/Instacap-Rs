@@ -42,35 +42,35 @@ const BandwidthChart = ({
     onInterfaceChange,
     className = ''
 }) => {
-const [bandwidthData, setBandwidthData] = useState(null);
-const [loading, setLoading] = useState(true);
-const [error, setError] = useState(null);
-const [isExpanded, setIsExpanded] = useState(false);
-const [chartType, setChartType] = useState('area'); // 'line', 'area', 'composed'
-const [selectedInterface, setSelectedInterface] = useState(newInterface);
-const [showSettings, setShowSettings] = useState(false);
-const [autoRefresh, setAutoRefresh] = useState(true);
+    const [bandwidthData, setBandwidthData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [chartType, setChartType] = useState('area'); // 'line', 'area', 'composed'
+    const [selectedInterface, setSelectedInterface] = useState(newInterface);
+    const [showSettings, setShowSettings] = useState(false);
+    const [autoRefresh, setAutoRefresh] = useState(true);
     
-const chartRef = useRef(null);
-const updateInterval = useRef(null);
+    const chartRef = useRef(null);
+    const updateInterval = useRef(null);
 
     // Real-time updates hook
-const { isConnected, lastUpdate } = useRealTimeUpdates(['bandwidth', 'interface_stats']);
+    const { isConnected, lastUpdate } = useRealTimeUpdates(['bandwidth', 'interface_stats']);
 
-    // Fetch bandwidth data
-const fetchBandwidthData = async () => {
-    try {
-        setLoading(true);
-        const data = await analyticsService.getBandwidthMetrics(timeRange, selectedInterface);
-        setBandwidthData(data);
-        setError(null);
-    } catch (err) {
-        setError(err.message);
-        console.error('Error fetching bandwidth data:', err);
-    } finally {
-        setLoading(false);
-    }
-};
+        // Fetch bandwidth data
+    const fetchBandwidthData = async () => {
+        try {
+            setLoading(true);
+            const data = await analyticsService.getBandwidthMetrics(timeRange, selectedInterface);
+            setBandwidthData(data);
+            setError(null);
+        } catch (err) {
+            setError(err.message);
+            console.error('Error fetching bandwidth data:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Initial load and interface changes
     useEffect(() => {
@@ -80,14 +80,14 @@ const fetchBandwidthData = async () => {
     // Auto-refresh mechanism
     useEffect(() => {
         if (autoRefresh) {
-        updateInterval.current = setInterval(fetchBandwidthData, 30000); // 30 seconds
-        return () => {
-            if (updateInterval.current) {
-            clearInterval(updateInterval.current);
+            updateInterval.current = setInterval(fetchBandwidthData, 30000); // 30 seconds
+            return () => {
+                if (updateInterval.current) {
+                    clearInterval(updateInterval.current);
+                }
+            };
             }
-        };
-        }
-    }, [autoRefresh, timeRange, selectedInterface]);
+        }, [autoRefresh, timeRange, selectedInterface]);
 
     // Real-time updates
     useEffect(() => {
@@ -125,21 +125,21 @@ const fetchBandwidthData = async () => {
         let status = 'normal';
         let statusColor = 'text-green-600';
         if (currentUtil > BANDWIDTH_THRESHOLDS.HIGH) {
-        status = 'high';
-        statusColor = 'text-red-600';
+            status = 'high';
+            statusColor = 'text-red-600';
         } else if (currentUtil > BANDWIDTH_THRESHOLDS.MEDIUM) {
-        status = 'medium';
-        statusColor = 'text-yellow-600';
+            status = 'medium';
+            statusColor = 'text-yellow-600';
         }
 
         return {
-        currentUtilization: currentUtil,
-        avgUtilization: avgUtil,
-        peakUtilization: peakUtil,
-        maxCapacity: bandwidthData.maxCapacity,
-        status,
-        statusColor,
-        trend: currentUtil > avgUtil ? 'up' : 'down'
+            currentUtilization: currentUtil,
+            avgUtilization: avgUtil,
+            peakUtilization: peakUtil,
+            maxCapacity: bandwidthData.maxCapacity,
+            status,
+            statusColor,
+            trend: currentUtil > avgUtil ? 'up' : 'down'
         };
     }, [bandwidthData]);
 
@@ -147,7 +147,7 @@ const fetchBandwidthData = async () => {
     const handleInterfaceChange = (newInterface) => {
         setSelectedInterface(newInterface);
         if (onInterfaceChange) {
-        onInterfaceChange(newInterface);
+            onInterfaceChange(newInterface);
         }
     };
 
