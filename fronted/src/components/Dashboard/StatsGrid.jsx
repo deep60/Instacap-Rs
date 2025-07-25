@@ -2,6 +2,16 @@ import React, { useState, useEffect } from 'react';
 import StatCard from '../Common/StatCard';
 import { formatBytes, formatNumber, formatPercentage } from '../../utils/formatters';
 import { useRealTimeUpdates } from '../../hooks/useRealTimeUpdates';
+import { 
+  Package, 
+  Database, 
+  Zap, 
+  BarChart3, 
+  Globe, 
+  Link, 
+  AlertTriangle, 
+  Clock 
+} from 'lucide-react';
 
 const StatsGrid = ({ refreshInterval = 5000 }) => {
   const [stats, setStats] = useState({
@@ -96,8 +106,8 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Total Packets"
         value={formatNumber(stats.totalPackets)}
         trend={previousStats ? calculateTrend(stats.totalPackets, previousStats.totalPackets) : 0}
-        icon={<span>📦</span>}
-        color="blue"
+        icon={Package}
+        status="info"
       />
 
       {/* Total Data */}
@@ -105,8 +115,8 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Total Data"
         value={formatBytes(stats.totalBytes)}
         trend={previousStats ? calculateTrend(stats.totalBytes, previousStats.totalBytes) : 0}
-        icon={<span>💾</span>}
-        color="green"
+        icon={Database}
+        status="success"
       />
 
       {/* Packets/Second */}
@@ -114,8 +124,8 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Packets/Sec"
         value={formatNumber(stats.packetsPerSecond)}
         trend={previousStats ? calculateTrend(stats.packetsPerSecond, previousStats.packetsPerSecond) : 0}
-        icon={<span>⚡</span>}
-        color="yellow"
+        icon={Zap}
+        status="warning"
         subtitle="Real-time rate"
       />
 
@@ -124,8 +134,8 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Bandwidth"
         value={formatBytes(stats.bytesPerSecond) + '/s'}
         trend={previousStats ? calculateTrend(stats.bytesPerSecond, previousStats.bytesPerSecond) : 0}
-        icon={<span>📊</span>}
-        color="purple"
+        icon={BarChart3}
+        status="neutral"
       />
 
       {/* Unique IPs */}
@@ -133,8 +143,8 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Unique IPs"
         value={formatNumber(stats.uniqueIPs)}
         trend={previousStats ? calculateTrend(stats.uniqueIPs, previousStats.uniqueIPs) : 0}
-        icon={<span>🌐</span>}
-        color="indigo"
+        icon={Globe}
+        status="info"
         subtitle="Active hosts"
       />
 
@@ -143,8 +153,8 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Active Connections"
         value={formatNumber(stats.activeConnections)}
         trend={previousStats ? calculateTrend(stats.activeConnections, previousStats.activeConnections) : 0}
-        icon={<span>🔗</span>}
-        color="cyan"
+        icon={Link}
+        status="info"
       />
 
       {/* Packet Loss */}
@@ -152,9 +162,8 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Packet Loss"
         value={formatPercentage(stats.packetLoss)}
         trend={previousStats ? calculateTrend(stats.packetLoss, previousStats.packetLoss) : 0}
-        icon={<span>⚠️</span>}
-        color={stats.packetLoss > 1 ? "red" : "green"}
-        invertTrend={true}
+        icon={AlertTriangle}
+        status={stats.packetLoss > 1 ? "error" : "success"}
       />
 
       {/* Average Latency */}
@@ -162,9 +171,8 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
         title="Avg Latency"
         value={`${stats.averageLatency}ms`}
         trend={previousStats ? calculateTrend(stats.averageLatency, previousStats.averageLatency) : 0}
-        icon={<span>⏱️</span>}
-        color={stats.averageLatency > 100 ? "red" : "green"}
-        invertTrend={true}
+        icon={Clock}
+        status={stats.averageLatency > 100 ? "error" : "success"}
       />
 
       {/* Protocol Distribution Card */}
