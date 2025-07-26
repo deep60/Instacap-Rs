@@ -39,7 +39,7 @@ const StatsGrid = ({ refreshInterval = 5000 }) => {
     fetchStats();
     const interval = setInterval(fetchStats, refreshInterval);
     return () => clearInterval(interval);
-  }, [refreshInterval]);
+  }, [refreshInterval]); // fetchStats is defined inside the component and recreated on every render, so we don't need to include it
 
   const fetchStats = async () => {
     try {

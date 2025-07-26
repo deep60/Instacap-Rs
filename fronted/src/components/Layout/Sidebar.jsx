@@ -47,7 +47,11 @@ const Sidebar = ({
   };
 
   const handleNavigation = (itemId) => {
-    onViewChange(itemId);
+    if (typeof onViewChange === 'function') {
+      onViewChange(itemId);
+    } else {
+      console.error('onViewChange is not a function:', onViewChange);
+    }
     if (onClose) onClose(); // Close sidebar on mobile after navigation
   };
 
@@ -244,6 +248,16 @@ const Sidebar = ({
     }
   };
 
+  // Map internal view names back to sidebar item IDs for highlighting
+  const getActiveItemId = (currentView) => {
+    const reverseViewMap = {
+      'packet-analysis': 'packets',
+      'threat-detection': 'threats',
+      'protocol-analysis': 'protocols'
+    };
+    return reverseViewMap[currentView] || currentView;
+  };
+
   const NavItem = ({ item, isActive }) => (
     <button
       onClick={() => handleNavigation(item.id)}
@@ -371,7 +385,7 @@ const Sidebar = ({
                     <NavItem
                       key={item.id}
                       item={item}
-                      isActive={currentView === item.id}
+                      isActive={getActiveItemId(currentView) === item.id}
                     />
                   ))}
                 </div>

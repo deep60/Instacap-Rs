@@ -138,7 +138,15 @@ function App() {
 
   // Navigation handlers
   const handleViewChange = (view) => {
-    setCurrentView(view);
+    // Map sidebar view IDs to internal view names for backward compatibility
+    const viewMap = {
+      'packets': 'packet-analysis',
+      'threats': 'threat-detection',
+      'protocols': 'protocol-analysis'
+    };
+    
+    const mappedView = viewMap[view] || view;
+    setCurrentView(mappedView);
     setSelectedPacket(null);
     setSelectedThreat(null);
   };
@@ -303,73 +311,62 @@ function App() {
           onExportData={handleExportData}
         />
         
-        <div className="flex">
-          <Sidebar 
-            currentView={currentView}
-            onViewChange={handleViewChange}
-            systemStatus={systemStatus}
-            alertsCount={alerts.length}
-          />
-          
-          <MainLayout>
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={
-                <Dashboard 
-                  packetData={packetData}
-                  threatData={threatData}
-                  performanceMetrics={performanceMetrics}
-                  protocolStats={protocolStats}
-                  alerts={alerts}
-                  systemStatus={systemStatus}
-                  onViewChange={handleViewChange}
-                />
-              } />
-              <Route path="/packets" element={renderPacketAnalysis()} />
-              <Route path="/packets/:id" element={
-                <PacketDetails 
-                  packet={selectedPacket}
-                  onBack={() => handleViewChange('packet-analysis')}
-                />
-              } />
-              <Route path="/threats" element={
-                <ThreatDashboard 
-                  threats={threatData}
-                  alerts={alerts}
-                  onThreatSelect={handleThreatSelect}
-                />
-              } />
-              <Route path="/threats/:id" element={
-                <ThreatDetails 
-                  threat={selectedThreat}
-                  onBack={() => handleViewChange('threat-detection')}
-                />
-              } />
-              <Route path="/performance" element={
-                <PerformanceMetrics 
-                  metrics={performanceMetrics}
-                  isRealTime={isConnected}
-                  timeRange={filters.timeRange}
-                />
-              } />
-              <Route path="/protocols" element={
-                <ProtocolAnalysis 
-                  protocolStats={protocolStats}
-                  timeRange={filters.timeRange}
-                  onProtocolSelect={(protocol) => {
-                    setFilters(prev => ({ ...prev, protocol }));
-                    handleViewChange('packet-analysis');
-                  }}
-                />
-              } />
-            </Routes>
-            
-            {/* Legacy view-based routing for backward compatibility */}
-            <div className="lg:hidden">
-              {renderMainContent()}
-            </div>
-          </MainLayout>
-        </div>
+        <MainLayout 
+          currentView={currentView} 
+          onViewChange={handleViewChange}
+        >
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={
+              <Dashboard 
+                packetData={packetData}
+                threatData={threatData}
+                performanceMetrics={performanceMetrics}
+                protocolStats={protocolStats}
+                alerts={alerts}
+                systemStatus={systemStatus}
+                onViewChange={handleViewChange}
+              />
+            } />
+            <Route path="/packets" element={renderPacketAnalysis()} />
+            <Route path="/packets/:id" element={
+              <PacketDetails 
+                packet={selectedPacket}
+                onBack={() => handleViewChange('packet-analysis')}
+              />
+            } />
+            <Route path="/threats" element={
+              <ThreatDashboard 
+                threats={threatData}
+                alerts={alerts}
+                onThreatSelect={handleThreatSelect}
+              />
+            } />
+            <Route path="/threats/:id" element={
+              <ThreatDetails 
+                threat={selectedThreat}
+                onBack={() => handleViewChange('threat-detection')}
+              />
+            } />
+            <Route path="/performance" element={
+              <PerformanceMetrics 
+                metrics={performanceMetrics}
+                isRealTime={isConnected}
+                timeRange={filters.timeRange}
+              />
+            } />
+            <Route path="/protocols" element={
+              <ProtocolAnalysis 
+                protocolStats={protocolStats}
+                timeRange={filters.timeRange}
+                onProtocolSelect={(protocol) => {
+                  setFilters(prev => ({ ...prev, protocol }));
+                  handleViewChange('packet-analysis');
+                }}
+              />
+            } />
+          </Routes>
+        </MainLayout>
       </div>
     </Router>
   );

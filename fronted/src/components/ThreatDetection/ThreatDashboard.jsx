@@ -4,16 +4,13 @@ import {
   AlertTriangle, 
   Eye, 
   Activity, 
-  Users, 
-  Globe, 
   Clock,
-  TrendingUp,
   Filter,
   RefreshCw,
   Download,
   Search
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // Mock data - replace with actual API calls
 const generateMockThreatData = () => ({
