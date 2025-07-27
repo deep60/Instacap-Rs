@@ -46,49 +46,6 @@ pub struct Alert {
     pub resolved: bool,
 }
 
-impl Alert {
-    pub fn new(alert_type: AlertType, severity: AlertSeverity, title: String, description: String) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            alert_type,
-            severity,
-            title,
-            description,
-            source_ip: None,
-            destination_ip: None,
-            protocol: None,
-            port: None,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            metadata: HashMap::new(),
-            acknowledged: false,
-            resolved: false,
-        }
-    }
-
-    pub fn with_network_info(mut self, src_ip: String, dest_ip: String, protocol: String, port: u16) -> Self {
-        self.source_ip = Some(src_ip);
-        self.destination_ip = Some(dest_ip);
-        self.protocol = Some(protocol);
-        self.port = Some(port);
-        self
-    }
-
-    pub fn with_metadata(mut self, key: String, value: String) -> Self {
-        self.metadata.insert(key, value);
-        self
-    }
-
-    pub fn acknowledge(&mut self) {
-        self.acknowledged = true;
-    }
-
-    pub fn resolve(&mut self) {
-        self.resolved = true;
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AlertRule {
@@ -109,6 +66,7 @@ pub struct AlertCondition {
     pub value: String,
     pub threshold: Option<f64>,
 }
+#[allow(dead_code)]
 pub struct AlertManager {
     alerts: Arc<Mutex<VecDeque<Alert>>>,
     rules: Arc<Mutex<Vec<AlertRule>>>,
@@ -175,6 +133,46 @@ impl NotificationHandler for EmailNotificationHandler {
             alert.title
         );
         Ok(())
+    }
+}
+
+impl Alert {
+    pub fn new(alert_type: AlertType, severity: AlertSeverity, title: String, description: String) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            alert_type,
+            severity,
+            title,
+            description,
+            source_ip: None,
+            destination_ip: None,
+            protocol: None,
+            port: None,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            metadata: HashMap::new(),
+            acknowledged: false,
+            resolved: false,
+        }
+    }
+
+    pub fn with_network_info(mut self, src_ip: String, dest_ip: String, protocol: String, port: u16) -> Self {
+        self.source_ip = Some(src_ip);
+        self.destination_ip = Some(dest_ip);
+        self.protocol = Some(protocol);
+        self.port = Some(port);
+        self
+    }
+
+    pub fn with_metadata(mut self, key: String, value: String) -> Self {
+        self.metadata.insert(key, value);
+        self
+    }
+
+    pub fn acknowledge(&mut self) {
+        self.acknowledged = true;
     }
 }
 
@@ -411,7 +409,7 @@ impl AlertManager {
         self.create_alert(alert)
     }
 
-    pub async fn should_send_alert(&self, alert: &crate::Alert) -> bool {
+    pub async fn should_send_alert(&self, _alert: &crate::Alert) -> bool {
         // Simple rate limiting logic
         true // For now, always allow alerts
     }

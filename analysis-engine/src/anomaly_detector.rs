@@ -50,6 +50,7 @@ pub enum Severity {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct BaselineMetrics {
     pub avg_bytes_per_second: f64,
     pub avg_packets_per_second: f64,
@@ -64,6 +65,7 @@ pub struct BaselineMetrics {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct AnomalyDetector {
     baseline: Option<BaselineMetrics>,
     metrics_history: VecDeque<NetworkMetrics>,
@@ -78,12 +80,14 @@ pub struct AnomalyDetector {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct PortScanTracker {
     port_accessed: std::collections::HashSet<u16>,
     first_seen: Instant,
     last_activity: Instant,
 }
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ConnectionTracker {
     connection_count: u32,
     first_seen: Instant,
@@ -91,6 +95,7 @@ struct ConnectionTracker {
     bytes_transferred: u64,
 }
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DetectionThresholds {
     pub traffic_spike_multiplier: f64,
     pub port_scan_threshold: u32,

@@ -62,6 +62,7 @@ struct ConnectionTracker {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ConnectionInfo {
     first_seen: Instant,
     last_seen: Instant,
@@ -103,6 +104,7 @@ pub struct ThreatDetector {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ThreatDetectorConfig {
     pub port_scan_threshold: usize,        // Number of unique ports before flagging
     pub port_scan_window: Duration,        // Time window for port scan detection

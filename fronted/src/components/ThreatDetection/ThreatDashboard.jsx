@@ -90,7 +90,7 @@ const generateRecentThreats = () => [
 const ThreatDashboard = () => {
   const [threatData, setThreatData] = useState(generateMockThreatData());
   const [timeSeriesData, setTimeSeriesData] = useState(generateTimeSeriesData());
-  const [threatTypes, setThreatTypes] = useState(generateThreatTypes());
+  const [threatTypes] = useState(generateThreatTypes());
   const [recentThreats, setRecentThreats] = useState(generateRecentThreats());
   const [selectedTimeRange, setSelectedTimeRange] = useState('24h');
   const [searchTerm, setSearchTerm] = useState('');

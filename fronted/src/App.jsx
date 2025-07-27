@@ -6,7 +6,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 
 // Layout Components
 import MainLayout from './components/Layout/MainLayout';
-import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Common/Header';
 
 // Dashboard Components
@@ -37,7 +36,7 @@ import useWebSocket from './hooks/useWebSocket';
 import useRealTimeUpdates from './hooks/useRealTimeUpdates';
 
 // Utils
-import { ROUTES, WEBSOCKET_EVENTS, API_ENDPOINTS } from './utils/constants';
+import { WEBSOCKET_EVENTS } from './utils/constants';
 
 function App() {
   // Application state
@@ -222,84 +221,6 @@ function App() {
     </div>
   );
 
-  // Render main content based on current view
-  const renderMainContent = () => {
-    switch (currentView) {
-      case 'dashboard':
-        return (
-          <Dashboard 
-            packetData={packetData}
-            threatData={threatData}
-            performanceMetrics={performanceMetrics}
-            protocolStats={protocolStats}
-            alerts={alerts}
-            systemStatus={systemStatus}
-            onViewChange={handleViewChange}
-          />
-        );
-
-      case 'packet-analysis':
-        return renderPacketAnalysis();
-
-      case 'packet-details':
-        return (
-          <PacketDetails 
-            packet={selectedPacket}
-            onBack={() => handleViewChange('packet-analysis')}
-          />
-        );
-
-      case 'threat-detection':
-        return (
-          <ThreatDashboard 
-            threats={threatData}
-            alerts={alerts}
-            onThreatSelect={handleThreatSelect}
-          />
-        );
-
-      case 'threat-list':
-        return (
-          <ThreatList 
-            threats={threatData}
-            onThreatSelect={handleThreatSelect}
-            filters={filters}
-          />
-        );
-
-      case 'threat-details':
-        return (
-          <ThreatDetails 
-            threat={selectedThreat}
-            onBack={() => handleViewChange('threat-detection')}
-          />
-        );
-
-      case 'performance':
-        return (
-          <PerformanceMetrics 
-            metrics={performanceMetrics}
-            isRealTime={isConnected}
-            timeRange={filters.timeRange}
-          />
-        );
-
-      case 'protocol-analysis':
-        return (
-          <ProtocolAnalysis 
-            protocolStats={protocolStats}
-            timeRange={filters.timeRange}
-            onProtocolSelect={(protocol) => {
-              setFilters(prev => ({ ...prev, protocol }));
-              handleViewChange('packet-analysis');
-            }}
-          />
-        );
-
-      default:
-        return <Navigate to="/dashboard" replace />;
-    }
-  };
 
   return (
     <Router>

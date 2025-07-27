@@ -118,9 +118,17 @@ impl AnalysisEngine {
         loop {
             tokio::select! {
                 // Process incoming packets
-                Some(packet) = self.packet_rx.recv() => {
-                    if let Err(e) = self.process_packet(packet).await {
-                        eprintln!("Error processing packets: {}", e);
+                packet_result = self.packet_rx.recv() => {
+                    match packet_result {
+                        Some(packet) => {
+                            if let Err(e) = self.process_packet(packet).await {
+                                eprintln!("Error processing packets: {}", e);
+                            }
+                        }
+                        None => {
+                            println!("Packet channel closed, shutting down analysis engine...");
+                            break;
+                        }
                     }
                 }
 
@@ -320,14 +328,6 @@ impl AnalysisEngine {
         Ok(())
     }
 
-    fn calculate_anomaly_severity(&self, score: f64) -> AlertSeverity {
-        match score {
-            s if s >= 0.95 => AlertSeverity::Critical,
-            s if s >= 0.9 => AlertSeverity::High,
-            s if s >= 0.85 => AlertSeverity::Medium,
-            _ => AlertSeverity::Low,
-        }
-    }
 
     fn calculate_threat_severity(&self, score: f64) -> AlertSeverity {
         match score {
@@ -336,17 +336,6 @@ impl AnalysisEngine {
             s if s >= 0.75 => AlertSeverity::Medium,
             _ => AlertSeverity::Low,
         }
-    }
-
-    fn create_anomaly_metadata(&self, packet: &PacketData, score: f64) -> HashMap<String, String> {
-        HashMap::from([
-            ("detection_type".to_string(), "anomaly".to_string()),
-            ("anomaly_score".to_string(), score.to_string()),
-            ("protocol".to_string(), packet.protocol.clone()),
-            ("packet_size".to_string(), packet.packet_size.to_string()),
-            ("source_port".to_string(), packet.source_port.to_string()),
-            ("dest_port".to_string(), packet.dest_port.to_string()),
-        ])
     }
 
     fn create_threat_metadata(&self, packet: &PacketData, score: f64) -> HashMap<String, String> {
