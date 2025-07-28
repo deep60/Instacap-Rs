@@ -125,30 +125,30 @@ cargo build --release
 sudo ./target/release/instacap-rs --help
 ```
 
-##### Basic Example
+#### Basic Example
 ```bash
 # Monitor default interface (eth0)
 sudo ./target/release/instacap-rs
 ```
 
-##### Custom Interface
+#### Custom Interface
 ```bash
 
 sudo ./target/release/instacap-rs -i wlan0
 ```
 
-##### Enable Promiscuous Mode
+#### Enable Promiscuous Mode
 ```bash
 sudo ./target/release/instacap-rs --promiscuous
 ```
 
-##### Verbose Logging
+#### Verbose Logging
 ```bash
 sudo ./target/release/instacap-rs -v
 ```
 
 
-##### Advanced Example
+#### Advanced Example
 ```bash
 
 sudo ./target/release/instacap-rs \
@@ -163,8 +163,8 @@ sudo ./target/release/instacap-rs \
   --verbose
 ```
 
+#### 🧾 Command-Line Options
 ```
-🧾 Command-Line Options
 Flag	Description	Default
 -i, --interface <INTERFACE>	Network interface to monitor	eth0
 -k, --kafka-broker <URL>	Kafka broker address	localhost:9092
