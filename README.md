@@ -1,4 +1,5 @@
 # **Instacap-RS**
+    Instacap-Rs is a high-performance, Rust-based network packet capture and anomaly detection tool with optional integration hooks for Kafka and Elasticsearch. It's designed for security analysts, sysadmins, and developers to monitor, analyze, and alert on suspicious network activity in real time.
 ## The Real-Time Network Traffic Analysis project involves several key components and processes:
 ### Data Flow & Processing
 **1. Network Monitoring**
@@ -76,6 +77,28 @@ Network bandwidth analysis
 Application performance monitoring
 Infrastructure health tracking
 Capacity planning
+
+---
+## 📌 Features
+
+- Real-time network traffic capture
+- Anomaly and threat detection
+- Traffic statistics & performance metrics
+- Optional verbose output for debugging
+- Stub integrations with Kafka and Elasticsearch
+- CLI-based configuration
+
+---
+
+## ⚙️ Installation
+
+### 1. Install Dependencies
+
+#### Ubuntu/Debian
+```bash
+sudo apt-get update
+sudo apt-get install libpcap-dev build-essential
+```
 
 
 ## Project Directory Structure
