@@ -4,79 +4,77 @@
 ### Data Flow & Processing
 **1. Network Monitoring**
 
-Captures live network packets from network interfaces
-Parses protocols (HTTP, DNS, SSL, TCP, UDP)
-Extracts metadata like IPs, ports, bytes transferred, connection states
+- Captures live network packets from network interfaces
+- Parses protocols (HTTP, DNS, SSL, TCP, UDP)
+- Extracts metadata like IPs, ports, bytes transferred, connection states
 
 **2. Stream Processing Pipeline**
-
-Real-time data ingestion through Kafka message queues
-High-performance data processing in Rust
-Asynchronous processing of thousands of network events per second
+- Real-time data ingestion through Kafka message queues
+- High-performance data processing in Rust
+- Asynchronous processing of thousands of network events per second
 
 **3. Machine Learning Analysis**
-
-Feature extraction from network patterns
-Anomaly detection using statistical models
-Risk scoring based on traffic characteristics
-Pattern recognition for known attack signatures
+- Feature extraction from network patterns
+- Anomaly detection using statistical models
+- Risk scoring based on traffic characteristics
+- Pattern recognition for known attack signatures
 
 #### Technical Components
 **_Infrastructure:_**
-
-Docker containers for easy deployment
-Kafka for handling high-throughput data streams
-Elasticsearch as a time-series database
-Message queues and event-driven architecture
+- Docker containers for easy deployment
+- Kafka for handling high-throughput data streams
+- Elasticsearch as a time-series database
+- Message queues and event-driven architecture
 
 **_Security Analysis:_**
-
-Detects unusual traffic patterns (data exfiltration, port scanning)
-Identifies potential brute force attacks
-Flags suspicious protocol usage
-Monitors for malware communication patterns
+- Detects unusual traffic patterns (data exfiltration, port scanning)
+- Identifies potential brute force attacks
+- Flags suspicious protocol usage
+- Monitors for malware communication patterns
 
 **_Visualization & Alerting:_**
-
-Real-time dashboards showing network health
-Traffic volume analysis and trending
-Geographic mapping of connections
-Automated alerts for high-risk events
+- Real-time dashboards showing network health
+- Traffic volume analysis and trending
+- Geographic mapping of connections
+- Automated alerts for high-risk events
 
 ### Skills I'll Develop
-**_Programming:_**
-Rust for systems programming and performance
-Python for machine learning and data science
-Network protocol understanding
-Asynchronous programming patterns
+```
+Programming:
 
-**_DevOps & Infrastructure:_**
+- Rust for systems programming and performance
+- Python for machine learning and data science
+- Network protocol understanding
+- Asynchronous programming patterns
 
-Container orchestration with Docker
-Message queue systems (Kafka)
-Database administration (Elasticsearch)
-Monitoring and logging systems
+DevOps & Infrastructure:
 
-**_Cybersecurity:_**
+- Container orchestration with Docker
+- Message queue systems (Kafka)
+- Database administration (Elasticsearch)
+- Monitoring and logging systems
 
-Network traffic analysis techniques
-Threat detection methodologies
-Incident response workflows
-Security monitoring best practices
+Cybersecurity:
 
-**_Real-World Applications Enterprise Security:_**
+- Network traffic analysis techniques
+- Threat detection methodologies
+- Incident response workflows
+- Security monitoring best practices
 
-SOC (Security Operations Center) monitoring
-Network intrusion detection
-Compliance reporting and auditing
-Incident investigation and forensics
+Real-World Applications Enterprise Security:
 
-**_Performance Monitoring:_**
+- SOC (Security Operations Center) monitoring
+- Network intrusion detection
+- Compliance reporting and auditing
+- Incident investigation and forensics
 
-Network bandwidth analysis
-Application performance monitoring
-Infrastructure health tracking
-Capacity planning
+Performance Monitoring:
+
+- Network bandwidth analysis
+- Application performance monitoring
+- Infrastructure health tracking
+- Capacity planning
+```
 
 ---
 ## 📌 Features
@@ -163,18 +161,19 @@ sudo ./target/release/instacap-rs \
   --verbose
 ```
 
-#### 🧾 Command-Line Options
-```
-Flag	Description	Default
--i, --interface <INTERFACE>	Network interface to monitor	eth0
--k, --kafka-broker <URL>	Kafka broker address	localhost:9092
--e, --elasticsearch-url <URL>	Elasticsearch URL	http://localhost:9200
---promiscuous	Enable promiscuous mode	false
---timeout <MS>	Packet capture timeout in ms	1000
---buffer-size <BYTES>	Buffer size for capture	65536
---anomaly-window <SECONDS>	Detection window	60
---traffic-threshold <COUNT>	Packet threshold for alerting	1000
--v, --verbose	Enable verbose logs	false
+### 🧾 Command-Line Options
+
+```| Option                                 | Description                                                | Default                     |
+|----------------------------------------|------------------------------------------------------------|-----------------------------|
+| `-i`, `--interface <INTERFACE>`        | Network interface to monitor                               | `eth0`                      |
+| `-k`, `--kafka-broker <KAFKA_BROKER>`  | Kafka broker URL                                           | `localhost:9092`           |
+| `-e`, `--elasticsearch-url <URL>`      | Elasticsearch endpoint URL                                 | `http://localhost:9200`    |
+| `--promiscuous`                        | Enable promiscuous mode to capture all traffic             | `false`                     |
+| `--timeout <TIMEOUT>`                  | Packet capture timeout in milliseconds                     | `1000`                      |
+| `--buffer-size <BUFFER_SIZE>`         | Buffer size for packet capture in bytes                    | `65536`                     |
+| `--anomaly-window <SECONDS>`           | Time window (in seconds) for anomaly detection             | `60`                        |
+| `--traffic-threshold <THRESHOLD>`      | Packet count threshold for triggering anomaly detection    | `1000`                      |
+| `-v`, `--verbose`                      | Enable verbose output (includes debug-level information)   | `false`                     |
 ```
 
 ### 📈 What You’ll See
@@ -241,25 +240,19 @@ sudo ./target/release/instacap-rs --buffer-size 32768 --timeout 2000
 
 
 ### 🔗 Integration Notes
-Kafka: Stubbed out; replace with real Kafka producer implementation.
-
-Elasticsearch: Stubbed out; replace with real Elasticsearch client logic.
-
-Production: Implement persistence and proper security logging for enterprise use.
+- Kafka: Stubbed out; replace with real Kafka producer implementation.
+- Elasticsearch: Stubbed out; replace with real Elasticsearch client logic.
+- Production: Implement persistence and proper security logging for enterprise use.
 
 ### 🔒 Security Considerations
-Requires root privileges to capture packets
-
-Captures potentially sensitive data
-
-Comply with data privacy & retention policies
-
-Customize threat detection to your needs
-
-Monitor CPU/memory impact in production
+- Requires root privileges to capture packets
+- Captures potentially sensitive data
+- Comply with data privacy & retention policies
+- Customize threat detection to your needs
+- Monitor CPU/memory impact in production
 
 ### 🤝 Contributing
-Pull requests are welcome! For major changes, please open an issue first to discuss improvements or features.
+- Pull requests are welcome! For major changes, please open an issue first to discuss improvements or features.
 
 ## 📄 License
 MIT License. See LICENSE for details.
@@ -272,17 +265,17 @@ MIT License. See LICENSE for details.
 
 This version follows the **standard GitHub README structure**:
 
-1. **Project name & description**
-2. **Features**
-3. **Installation**
-4. **Usage**
-5. **Command-line options**
-6. **Expected output**
-7. **Troubleshooting**
-8. **Integration**
-9. **Security**
-10. **Contributing**
-11. **License**
+1. Project name & description
+2. Features
+3. Installation
+4. Usage
+5. Command-line options
+6. Expected output
+7. Troubleshooting
+8. Integration
+9. Security
+10. Contributing
+11. License
 
 Let me know if you'd like this saved as a file (`README.md`) or want badges (build status, licens
 ```
