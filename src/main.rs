@@ -24,7 +24,7 @@ use pnet::packet::{
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// Interface to capture traffic from
-    #[clap(short, long, default_value = "eth0")]
+    #[clap(short, long, default_value = "en0")]
     interface: String,
     
     /// Kafka broker URL

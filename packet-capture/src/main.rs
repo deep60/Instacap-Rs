@@ -9,6 +9,10 @@ mod protocol_parser;
 mod deep_inspection;
 mod performance_metrics;
 
+use packet_capture::PacketCapture;
+use protocol_parser::ProtocolParser;
+use deep_inspection::DeepInspection;
+use performance_metrics::PerformanceMetrics;
 
 #[derive(Parser)]
 #[command(name = "packet-analyzer")]
